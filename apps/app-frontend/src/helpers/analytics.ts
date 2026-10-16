@@ -44,10 +44,10 @@ export type AnalyticsEvent = keyof AnalyticsEventMap
 
 let analytics: PostHog | undefined
 let pending: Promise<void> | undefined
-let enabled = false
+const enabled = false
 let activated = false
-let debug = false
-let explicitlyOptedIn = false
+const debug = false
+const explicitlyOptedIn = false
 const events: Array<{ name: AnalyticsEvent; properties: Record<string, unknown> | undefined }> = []
 const allowed = import.meta.env.PROD || import.meta.env.VITE_ENABLE_ANALYTICS === 'true'
 

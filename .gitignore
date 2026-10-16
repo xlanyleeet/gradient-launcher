@@ -54,7 +54,7 @@ Thumbs.db
 .cache
 
 # frontend generated files
-apps/frontend/src/generated
+packages/blog/public/feed
 /packages/ui/src/layouts/wrapped/settings/language-settings/language-settings-coverage.generated.ts
 
 .turbo

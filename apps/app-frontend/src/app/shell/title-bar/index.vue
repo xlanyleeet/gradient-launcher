@@ -4,6 +4,7 @@ import { defineMessages, IconButton, useVIntl } from '@modrinth/ui'
 import { useRouter } from 'vue-router'
 
 import gradientLogo from '@/assets/gradient-logo.png'
+
 import AppActionBar from './action-bar.vue'
 import Breadcrumbs from './breadcrumbs.vue'
 import WindowControls from './window-controls.vue'

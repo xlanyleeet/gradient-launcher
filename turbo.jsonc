@@ -75,10 +75,6 @@
 				"scripts/i18n-icu-contract.ts",
 				"apps/app-frontend/src/**/*.vue",
 				"apps/app-frontend/src/locales/**/*.json",
-				"apps/frontend/src/**/*.vue",
-				"apps/frontend/src/locales/**/*.json",
-				"packages/moderation/src/**/*.vue",
-				"packages/moderation/src/locales/**/*.json",
 				"packages/ui/src/**/*.vue",
 				"packages/ui/src/locales/**/*.json"
 			],
@@ -163,9 +159,6 @@
 				"exec",
 				"prettier",
 				"--check",
-				"apps/labrinth",
-				"apps/app-playground",
-				"apps/daedalus_client",
 				"packages/app-lib",
 				"packages/daedalus"
 			]
@@ -177,18 +170,9 @@
 				"exec",
 				"prettier",
 				"--write",
-				"apps/labrinth",
-				"apps/app-playground",
-				"apps/daedalus_client",
 				"packages/app-lib",
 				"packages/daedalus"
 			]
-		},
-		"labrinth#dev": {
-			"cache": false,
-			"persistent": true,
-			"env": ["CARGO_*", "RUST_*", "RUSTFLAGS", "FORCE_COLOR"],
-			"command": ["cargo", "run", "--package=labrinth"]
 		},
 		"fix:ancillary": {
 			"cache": false
