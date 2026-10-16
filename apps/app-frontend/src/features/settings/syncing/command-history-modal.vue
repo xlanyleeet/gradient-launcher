@@ -20,14 +20,7 @@ const queryClient = useQueryClient()
 const modal = ref<InstanceType<typeof NewModal> | null>(null)
 const commandHistory = ref('')
 const historyQuery = useQuery({ ...commandHistoryQueryOptions(), enabled: false })
-const CommandHistoryEditor = defineAsyncComponent(async () => {
-	const [editor] = await Promise.all([
-		import('vue3-ace-editor'),
-		import('@modrinth/ui/src/utils/ace-theme'),
-		import('@modrinth/ui/src/utils/ace-mode-mcfunction'),
-	])
-	return editor.VAceEditor
-})
+
 const saveMutation = useMutation({
 	mutationFn: set_command_history,
 	onSuccess: (history) => {
@@ -78,14 +71,12 @@ defineExpose({ show })
 		max-width="700px"
 		width="700px"
 	>
-		<CommandHistoryEditor
-			v-model:value="commandHistory"
-			lang="mcfunction"
-			theme="modrinth"
-			:print-margin="false"
-			class="command-history-editor ace-modrinth"
-			style="height: 420px; font-size: 0.875rem"
-		/>
+		<textarea
+			v-model="commandHistory"
+			class="w-full h-[420px] p-4 bg-surface-2 text-contrast font-mono text-sm border-0 resize-none outline-none leading-relaxed"
+			placeholder="Enter commands here..."
+			spellcheck="false"
+		></textarea>
 		<template #actions>
 			<div class="flex justify-end gap-2">
 				<Button type="outlined" @click="modal?.hide()">

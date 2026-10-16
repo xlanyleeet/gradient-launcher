@@ -265,12 +265,42 @@ impl OnlineProfileCacheIntent {
 }
 
 impl Credentials {
+    /// Creates an offline (pirated / nickname-only) player credentials profile.
+    pub fn create_offline(username: &str) -> Self {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(format!("OfflinePlayer:{}", username).as_bytes());
+        let hash = hasher.finalize();
+        let mut uuid_bytes = [0u8; 16];
+        uuid_bytes.copy_from_slice(&hash[0..16]);
+        uuid_bytes[6] = (uuid_bytes[6] & 0x0f) | 0x30;
+        uuid_bytes[8] = (uuid_bytes[8] & 0x3f) | 0x80;
+        let id = Uuid::from_bytes(uuid_bytes);
+
+        Self {
+            offline_profile: MinecraftProfile {
+                id,
+                name: username.to_string(),
+                ..MinecraftProfile::default()
+            },
+            access_token: "0".to_string(),
+            refresh_token: "offline".to_string(),
+            expires: Utc::now() + Duration::days(365 * 10),
+            active: true,
+        }
+    }
+
     /// Refreshes the authentication tokens for this user if they are expired, or
     /// very close to expiration.
     async fn refresh(
         &mut self,
         exec: impl sqlx::Executor<'_, Database = sqlx::Sqlite> + Copy,
     ) -> crate::Result<()> {
+        if self.refresh_token == "offline" || self.access_token == "0" {
+            // Offline credentials do not require Microsoft OAuth refresh
+            return Ok(());
+        }
+
         // Use a margin of 5 minutes to give e.g. Minecraft and potentially
         // other operations that depend on a fresh token 5 minutes to complete
         // from now, and deal with some classes of clock skew
@@ -351,6 +381,10 @@ impl Credentials {
         &self,
         cache_intent: OnlineProfileCacheIntent,
     ) -> Option<Arc<MinecraftProfile>> {
+        if self.refresh_token == "offline" || self.access_token == "0" {
+            return Some(Arc::new(self.offline_profile.clone()));
+        }
+
         let max_age = cache_intent.max_age();
         let stale_profile = {
             let mut profile_cache = PROFILE_CACHE.lock().await;
@@ -507,7 +541,10 @@ impl Credentials {
                 }
             }
         } else {
-            Ok(None)
+            // Gradient Launcher: Fallback to offline "Player" profile if no account is configured
+            let offline = Self::create_offline("Player");
+            offline.upsert(exec).await.ok();
+            Ok(Some(offline))
         }
     }
 

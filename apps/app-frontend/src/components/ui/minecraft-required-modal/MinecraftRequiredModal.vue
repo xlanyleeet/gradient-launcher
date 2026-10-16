@@ -43,29 +43,41 @@
 					{{ formatMessage(messages.signIn) }}
 				</Button>
 			</div>
-			<p class="m-0 text-center text-sm text-secondary">
-				{{ formatMessage(messages.dontHaveAccount) }}
-				<a
-					class="text-blue font-medium hover:underline"
-					href="https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc"
+			<div class="flex items-center gap-2">
+				<div class="h-[1px] bg-surface-5 flex-1"></div>
+				<span class="text-xs text-secondary font-medium uppercase tracking-wider">або грати офлайн (піратка)</span>
+				<div class="h-[1px] bg-surface-5 flex-1"></div>
+			</div>
+			<div class="flex gap-2">
+				<Input
+					v-model="offlineUsername"
+					placeholder="Нікнейм гравця"
+					wrapper-class="flex-1"
+					@keydown.enter="playOffline"
+				/>
+				<Button
+					type="colored"
+					color="brand"
+					:disabled="!offlineUsername.trim() || loadingSignIn"
+					@click="playOffline"
 				>
-					{{ formatMessage(messages.getMinecraft) }}
-				</a>
-			</p>
+					Грати офлайн
+				</Button>
+			</div>
 		</div>
 	</NewModal>
 </template>
 
 <script setup lang="ts">
 import { MessagesSquareIcon, SpinnerIcon } from '@modrinth/assets'
-import { Button, ButtonLink, defineMessages, NewModal, useVIntl } from '@modrinth/ui'
+import { Button, ButtonLink, defineMessages, Input, NewModal, useVIntl } from '@modrinth/ui'
 import { ref } from 'vue'
 
 import steveImage from '@/assets/steve-look-up-left.webp'
 import { handleSevereError } from '@/composables/use-error.js'
 import { injectMinecraftAccounts } from '@/features/minecraft-accounts/context'
 import { trackEvent } from '@/helpers/analytics'
-import { login as loginFlow, set_default_user } from '@/helpers/auth.js'
+import { login as loginFlow, login_offline, set_default_user } from '@/helpers/auth.js'
 
 const { formatMessage } = useVIntl()
 const minecraftAccounts = injectMinecraftAccounts()
@@ -77,12 +89,12 @@ const messages = defineMessages({
 	},
 	descriptionHeader: {
 		id: 'minecraft-required.description-header',
-		defaultMessage: 'Sign in to a Microsoft account',
+		defaultMessage: 'Sign in to Minecraft or Play Offline',
 	},
 	description: {
 		id: 'minecraft-required.description',
 		defaultMessage:
-			'You need a Microsoft account that owns Minecraft before you can launch and play.',
+			'Sign in with your Microsoft account, or type your desired offline nickname to start playing immediately in cracked/offline mode.',
 	},
 	getSupport: {
 		id: 'minecraft-required.get-support',
@@ -92,18 +104,11 @@ const messages = defineMessages({
 		id: 'minecraft-required.sign-in',
 		defaultMessage: 'Sign in to Microsoft',
 	},
-	dontHaveAccount: {
-		id: 'minecraft-required.dont-have-account',
-		defaultMessage: 'Don’t have an account?',
-	},
-	getMinecraft: {
-		id: 'minecraft-required.get-minecraft',
-		defaultMessage: 'Get Minecraft',
-	},
 })
 
 const modal = ref<InstanceType<typeof NewModal>>()
 const loadingSignIn = ref(false)
+const offlineUsername = ref('Player')
 
 function show() {
 	modal.value?.show()
@@ -119,6 +124,24 @@ async function signIn() {
 		await set_default_user(loggedIn.profile.id)
 		await minecraftAccounts.value?.refreshValues()
 		await trackEvent('AccountLogIn', { source: 'MinecraftRequiredModal' })
+		modal.value?.hide()
+	} catch (error) {
+		handleSevereError(error)
+	} finally {
+		loadingSignIn.value = false
+	}
+}
+
+async function playOffline() {
+	if (!offlineUsername.value.trim()) return
+	loadingSignIn.value = true
+
+	try {
+		const cred = await login_offline(offlineUsername.value.trim())
+		if (!cred) return
+
+		await set_default_user(cred.profile.id)
+		await minecraftAccounts.value?.refreshValues()
 		modal.value?.hide()
 	} catch (error) {
 		handleSevereError(error)

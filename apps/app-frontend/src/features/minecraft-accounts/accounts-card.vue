@@ -9,6 +9,29 @@
 			<SpinnerIcon v-else class="animate-spin" />
 			{{ formatMessage(messages.signInToMinecraft) }}
 		</Button>
+
+		<div class="flex items-center gap-2 my-1">
+			<div class="h-[1px] bg-surface-5 flex-1"></div>
+			<span class="text-xs text-secondary font-medium uppercase tracking-wider">або режим піратки</span>
+			<div class="h-[1px] bg-surface-5 flex-1"></div>
+		</div>
+
+		<div class="flex gap-2">
+			<Input
+				v-model="offlineUsername"
+				placeholder="Нікнейм гравця"
+				wrapper-class="flex-1"
+				@keydown.enter="addOfflineAccount(offlineUsername)"
+			/>
+			<Button
+				type="colored"
+				color="purple"
+				:disabled="!offlineUsername.trim() || loginDisabled"
+				@click="addOfflineAccount(offlineUsername)"
+			>
+				Увійти офлайн
+			</Button>
+		</div>
 	</div>
 	<Accordion
 		v-else
@@ -27,9 +50,17 @@
 					"
 				/>
 				<div class="flex flex-col items-start w-full min-w-0">
-					<span class="truncate w-full text-left">{{
-						selectedAccount ? selectedAccount.profile.name : formatMessage(messages.selectAccount)
-					}}</span>
+					<div class="flex items-center gap-1.5 w-full min-w-0">
+						<span class="truncate text-left">{{
+							selectedAccount ? selectedAccount.profile.name : formatMessage(messages.selectAccount)
+						}}</span>
+						<span
+							v-if="selectedAccount?.access_token === '0'"
+							class="text-[10px] px-1.5 py-0.2 rounded bg-surface-5 text-secondary font-medium shrink-0"
+						>
+							Офлайн
+						</span>
+					</div>
 					<span class="text-secondary text-xs">{{ formatMessage(messages.minecraftAccount) }}</span>
 				</div>
 			</div>
@@ -57,6 +88,12 @@
 						>
 							{{ account.profile.name }}
 						</p>
+						<span
+							v-if="account.access_token === '0'"
+							class="text-[10px] px-1.5 py-0.2 rounded bg-surface-5 text-secondary font-medium shrink-0 ml-1"
+						>
+							Офлайн
+						</span>
 					</button>
 					<IconButton
 						v-tooltip="formatMessage(messages.removeAccount)"
@@ -71,15 +108,40 @@
 				</div>
 			</template>
 			<div class="flex flex-col gap-2 px-2 pt-2">
-				<Button
-					v-if="accounts.length > 0"
-					class="w-full !bg-button-bg !text-primary ![box-shadow:var(--shadow-button)]"
-					:disabled="loginDisabled"
-					@click="login()"
-				>
-					<PlusIcon />
-					{{ formatMessage(messages.addAccount) }}
-				</Button>
+				<div class="grid grid-cols-2 gap-2">
+					<Button
+						class="w-full !bg-button-bg !text-primary ![box-shadow:var(--shadow-button)]"
+						:disabled="loginDisabled"
+						@click="login()"
+					>
+						<PlusIcon />
+						{{ formatMessage(messages.addAccount) }}
+					</Button>
+					<Button
+						class="w-full !bg-button-bg !text-primary ![box-shadow:var(--shadow-button)]"
+						:disabled="loginDisabled"
+						@click="showOfflineInput = !showOfflineInput"
+					>
+						<PlusIcon />
+						Офлайн акаунт
+					</Button>
+				</div>
+				<div v-if="showOfflineInput" class="flex gap-2 mt-1">
+					<Input
+						v-model="offlineUsername"
+						placeholder="Нікнейм гравця"
+						wrapper-class="flex-1"
+						@keydown.enter="addOfflineAccount(offlineUsername)"
+					/>
+					<Button
+						type="colored"
+						color="brand"
+						:disabled="!offlineUsername.trim() || loginDisabled"
+						@click="addOfflineAccount(offlineUsername)"
+					>
+						Додати
+					</Button>
+				</div>
 			</div>
 		</div>
 	</Accordion>
@@ -101,6 +163,7 @@ import {
 	defineMessages,
 	IconButton,
 	injectNotificationManager,
+	Input,
 	useVIntl,
 } from '@modrinth/ui'
 import type { Ref } from 'vue'
@@ -112,6 +175,7 @@ import { trackEvent } from '@/helpers/analytics'
 import {
 	get_default_user,
 	login as login_flow,
+	login_offline,
 	remove_user,
 	set_default_user,
 	users,
@@ -132,10 +196,14 @@ type MinecraftCredential = {
 		id: string
 		name: string
 	}
+	access_token?: string
+	refresh_token?: string
 }
 
 const accounts: Ref<MinecraftCredential[]> = ref([])
 const loginDisabled = ref(false)
+const showOfflineInput = ref(false)
+const offlineUsername = ref('')
 const defaultUser = ref<string | undefined>()
 const equippedSkin = ref<Skin | null>(null)
 const equippedHeadUrl = ref<string>()
@@ -245,6 +313,24 @@ async function login() {
 
 	trackEvent('AccountLogIn')
 	loginDisabled.value = false
+}
+
+async function addOfflineAccount(name: string) {
+	if (!name || !name.trim()) return
+	loginDisabled.value = true
+	try {
+		const cred = await login_offline(name.trim())
+		offlineUsername.value = ''
+		showOfflineInput.value = false
+		await refreshValues()
+		if (cred) {
+			await setAccount(cred)
+		}
+	} catch (err) {
+		handleError(err)
+	} finally {
+		loginDisabled.value = false
+	}
 }
 
 async function logout(id: string) {

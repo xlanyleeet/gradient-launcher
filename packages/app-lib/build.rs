@@ -16,9 +16,15 @@ fn main() {
 }
 
 fn set_env() {
-    for (var_name, var_value) in
-        dotenvy::dotenv_iter().into_iter().flatten().flatten()
-    {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let env_file = manifest_dir.join(".env");
+    let iter = dotenvy::from_path_iter(&env_file)
+        .or_else(|_| dotenvy::from_path_iter(manifest_dir.join(".env.prod")))
+        .into_iter()
+        .flatten()
+        .flatten();
+
+    for (var_name, var_value) in iter {
         if var_name == "DATABASE_URL" {
             // The sqlx database URL is a build-time detail that should not be exposed to the crate
             continue;

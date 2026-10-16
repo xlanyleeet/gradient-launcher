@@ -73,22 +73,7 @@ watch(
 </script>
 
 <template>
-	<div v-if="adConsentAvailable">
-		<h2 class="m-0 text-lg font-semibold text-contrast">
-			{{ formatMessage(messages.adsConsentTitle) }}
-		</h2>
-		<div class="mt-2 flex flex-col gap-2.5 items-start">
-			<Button @click="manageAdsPreferences">
-				<Settings2Icon aria-hidden="true" />
-				{{ formatMessage(messages.adsConsentManage) }}
-			</Button>
-			<div>
-				{{ formatMessage(messages.adsConsentIntro) }}
-			</div>
-		</div>
-	</div>
-
-	<div class="mt-8 first:mt-0 flex items-center justify-between gap-4">
+	<div class="first:mt-0 flex items-center justify-between gap-4">
 		<div>
 			<h2 class="m-0 text-lg font-semibold text-contrast">
 				{{ formatMessage(messages.telemetryTitle) }}

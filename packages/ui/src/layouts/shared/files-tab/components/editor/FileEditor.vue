@@ -17,21 +17,25 @@
 			@replace="replaceOne"
 			@replace-all="replaceAllOccurrences"
 		/>
-		<component
-			:is="props.editorComponent"
-			v-if="!isEditingImage && !isLoading && props.editorComponent"
-			v-model:value="fileContent"
-			:lang="editorLanguage"
-			theme="modrinth"
+		<CodeMirrorEditor
+			v-if="!isEditingImage && !isLoading"
+			ref="editorInstance"
+			v-model="fileContent"
+			:language="editorLanguage"
 			:readonly="isEditorReadOnly"
-			:print-margin="false"
-			:style="{ height: editorHeight, fontSize: '0.875rem' }"
-			class="ace-modrinth rounded-[20px]"
-			@init="onEditorInit"
+			:style="{ height: editorHeight }"
+			class="rounded-[20px]"
+			@save="saveFileContent(false)"
+			@toggle-find="toggleFind"
+			@open-replace="() => {
+				if (isEditorReadOnly) return
+				isFindOpen = true
+				nextTick(() => findReplaceRef?.openReplace())
+			}"
 		/>
 		<FileImageViewer v-else-if="isEditingImage && imagePreview" :image-blob="imagePreview" />
 		<div
-			v-else-if="isLoading || !props.editorComponent"
+			v-else-if="isLoading"
 			class="flex items-center justify-center rounded-[20px] bg-bg-raised"
 			:style="{ height: editorHeight }"
 		>
@@ -42,7 +46,6 @@
 
 <script setup lang="ts">
 import { SpinnerIcon } from '@modrinth/assets'
-import type { Ace } from 'ace-builds'
 import { type Component, computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { defineMessages, useVIntl } from '#ui/composables/i18n'
@@ -52,12 +55,13 @@ import { getEditorLanguage, getFileExtension, isImageFile } from '#ui/utils/file
 
 import { injectFileManager } from '../../providers/file-manager'
 import type { EditingFile } from '../../types'
+import CodeMirrorEditor from './CodeMirrorEditor.vue'
 import EditorFindReplace from './EditorFindReplace.vue'
 import FileImageViewer from './FileImageViewer.vue'
 
 const props = defineProps<{
 	file: EditingFile | null
-	editorComponent: Component | null
+	editorComponent?: Component | null
 }>()
 
 const emit = defineEmits<{
@@ -117,7 +121,7 @@ const originalContent = ref('')
 const isEditingImage = ref(false)
 const imagePreview = ref<Blob | null>(null)
 const isLoading = ref(false)
-const editorInstance = ref<Ace.Editor | null>(null)
+const editorInstance = ref<InstanceType<typeof CodeMirrorEditor> | null>(null)
 const editorContainer = ref<HTMLElement | null>(null)
 const editorHeight = ref('300px')
 
@@ -149,10 +153,6 @@ const editorLanguage = computed(() => {
 const isEditorReadOnly = computed(
 	() => (ctx.isBusy?.value ?? false) || (ctx.isReadOnly?.(props.file?.path ?? '') ?? false),
 )
-
-watch(isEditorReadOnly, (readOnly) => {
-	editorInstance.value?.setReadOnly(readOnly)
-})
 
 watch(
 	() => props.file,
@@ -211,33 +211,6 @@ function resetState() {
 	originalContent.value = ''
 	isEditingImage.value = false
 	imagePreview.value = null
-}
-
-function onEditorInit(editor: Ace.Editor) {
-	editorInstance.value = editor
-	editor.setReadOnly(isEditorReadOnly.value)
-
-	editor.commands.addCommand({
-		name: 'save',
-		bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
-		exec: () => saveFileContent(false),
-	})
-
-	editor.commands.addCommand({
-		name: 'find',
-		bindKey: { win: 'Ctrl-F', mac: 'Command-F' },
-		exec: () => toggleFind(),
-	})
-
-	editor.commands.addCommand({
-		name: 'replace',
-		bindKey: { win: 'Ctrl-H', mac: 'Command-Option-F' },
-		exec: () => {
-			if (isEditorReadOnly.value) return
-			isFindOpen.value = true
-			nextTick(() => findReplaceRef.value?.openReplace())
-		},
-	})
 }
 
 async function saveFileContent(exit: boolean = false) {

@@ -44,7 +44,6 @@ import {
 	TooltipDirective,
 	useDebugLogger,
 	useFormatBytes,
-	useHostingIntercom,
 	UserRoleIcon,
 	useVIntl,
 } from '@modrinth/ui'
@@ -65,7 +64,6 @@ import { useRouteLoading } from '@/app/runtime/use-route-loading'
 import AppSidebar from '@/app/shell/sidebar/index.vue'
 import AppTitleBar from '@/app/shell/title-bar/index.vue'
 import ErrorModal from '@/components/ui/ErrorModal.vue'
-import HostingUpdateRequired from '@/components/ui/HostingUpdateRequired.vue'
 import AddServerToInstanceModal from '@/components/ui/install_flow/AddServerToInstanceModal.vue'
 import UnknownPackWarningModal from '@/components/ui/install_flow/UnknownPackWarningModal.vue'
 import IconEditorModal from '@/components/ui/instance_settings/icon-editor-modal/index.vue'
@@ -79,7 +77,6 @@ import NavButton from '@/components/ui/NavButton.vue'
 import QuickInstanceSwitcher from '@/components/ui/QuickInstanceSwitcher.vue'
 import SharedInstanceInviteHandler from '@/components/ui/shared-instances/shared-instance-invite-handler/index.vue'
 import SplashScreen from '@/components/ui/SplashScreen.vue'
-import SurveyPopup from '@/components/ui/SurveyPopup.vue'
 import { useCheckDisableMouseover } from '@/composables/macCssFix.js'
 import { useAppEvent } from '@/composables/use-app-event'
 import { useAppSettings } from '@/composables/use-app-settings.ts'
@@ -89,20 +86,19 @@ import { useQuickInstanceLimit } from '@/composables/use-quick-instance-limit.ts
 import { isDarkTheme, useTheme } from '@/composables/use-theme.ts'
 import { config } from '@/config'
 import { provideMinecraftAccounts } from '@/features/minecraft-accounts/context'
+import MinecraftAccountsModal from '@/features/minecraft-accounts/MinecraftAccountsModal.vue'
 import AppSettingsModal from '@/features/settings/app-settings-modal/index.vue'
 import { provideSettingsActions } from '@/features/settings/settings-actions'
 import NewUpdateModal from '@/features/updates/new-update-modal/index.vue'
 import { getAccountAppearance, rememberAccountAppearance } from '@/helpers/account-appearance.ts'
 import {
-	hide_ads_window,
-	init_ads_window,
 	perform_ads_consent_action,
 	release_ads_window_hold,
 	should_show_ads_consent_popup,
 	take_ads_window_hold,
 } from '@/helpers/ads.js'
 import { debugAnalytics, initAnalytics, trackEvent } from '@/helpers/analytics'
-import { check_reachable } from '@/helpers/auth.js'
+import { check_reachable, get_default_user, users } from '@/helpers/auth.js'
 import { get_user, get_user_many, get_version } from '@/helpers/cache.js'
 import { gameSettingsQueryOptions } from '@/helpers/game-options'
 import { install_create_modpack_instance, install_get_modpack_preview } from '@/helpers/install'
@@ -219,47 +215,13 @@ const INTERCOM_BUBBLE_DEFAULT_PADDING = 20
 const credentials = ref()
 const storedModrinthAccounts = ref([])
 let credentialsRefreshId = 0
-const sidebarToggled = ref(true)
-watch(
-	() => appSettings.toggleSidebar,
-	(toggleSidebar) => {
-		sidebarToggled.value = !toggleSidebar
-	},
-)
 const forceSidebar = computed(
 	() =>
 		route.path.startsWith('/browse') ||
 		route.path.startsWith('/project') ||
 		route.path.startsWith('/user'),
 )
-const sidebarVisible = computed(() => sidebarToggled.value || forceSidebar.value)
-const hostingRouteActive = computed(() => route.path.startsWith('/hosting'))
-const hostingUpdateRequired = computed(
-	() =>
-		hostingRouteActive.value &&
-		!!appUpdateState.availableUpdate.value &&
-		appUpdateState.updatesEnabled.value,
-)
-const hostingIntercomIdentityKey = computed(() => {
-	const rawServerId = route.params.id
-	const serverId = Array.isArray(rawServerId) ? rawServerId[0] : rawServerId
-	const userId = credentials.value?.user_id ?? credentials.value?.user?.id ?? 'anonymous'
-	return `${userId}:${serverId ?? 'hosting'}`
-})
-const hostingIntercom = useHostingIntercom({
-	enabled: computed(
-		() => hostingRouteActive.value && !hostingUpdateRequired.value && !!credentials.value?.session,
-	),
-	appId: 'ykeritl9',
-	fetchToken: fetchIntercomToken,
-	identityKey: hostingIntercomIdentityKey,
-	horizontalPadding: computed(() =>
-		sidebarVisible.value
-			? APP_SIDEBAR_WIDTH + INTERCOM_BUBBLE_DEFAULT_PADDING
-			: INTERCOM_BUBBLE_DEFAULT_PADDING,
-	),
-})
-
+const sidebarVisible = computed(() => forceSidebar.value)
 const notificationManager = new AppNotificationManager()
 provideNotificationManager(notificationManager)
 const { handleError, addNotification } = notificationManager
@@ -279,6 +241,47 @@ const popupNotificationManager = new AppPopupNotificationManager()
 providePopupNotificationManager(popupNotificationManager)
 const { addPopupNotification } = popupNotificationManager
 let adsConsentPopupId = null
+
+const minecraftAccountsModal = ref(null)
+const currentMinecraftAccount = ref(null)
+
+async function updateActiveMinecraftAccount() {
+	try {
+		const defUser = await get_default_user().catch(() => null)
+		const allUsers = await users().catch(() => [])
+		currentMinecraftAccount.value = Array.isArray(allUsers)
+			? allUsers.find((u) => u.profile?.id === defUser) ?? allUsers[0] ?? null
+			: null
+	} catch {
+		currentMinecraftAccount.value = null
+	}
+}
+
+function onMinecraftAccountChanged(acc) {
+	currentMinecraftAccount.value = acc ?? null
+}
+
+const currentMinecraftAvatar = computed(() => {
+	if (!currentMinecraftAccount.value) return ''
+	const acc = currentMinecraftAccount.value
+	if (acc.access_token === '0') {
+		return `https://skin.ely.by/usernames/${encodeURIComponent(acc.profile?.name ?? 'steve')}`
+	}
+	if (acc.profile?.id) {
+		return `https://mc-heads.net/avatar/${acc.profile.id}/48`
+	}
+	return 'https://launcher-files.modrinth.com/assets/steve_head.png'
+})
+
+const minecraftAccountTooltip = computed(() => {
+	if (currentMinecraftAccount.value?.profile?.name) {
+		const isOffline = currentMinecraftAccount.value.access_token === '0'
+		return `Акаунт: ${currentMinecraftAccount.value.profile.name} (${isOffline ? 'Піратка' : 'Microsoft'})`
+	}
+	return 'Увійти в акаунт (Microsoft або Офлайн)'
+})
+
+useAppEvent('accounts_changed', () => void updateActiveMinecraftAccount(), appEvents)
 useAppEvent('ads_consent_required', handleAdsConsentRequired, appEvents)
 
 const tauriApiClient = createAppClient()
@@ -317,7 +320,7 @@ providePageContext({
 		left: ref(APP_LEFT_NAV_WIDTH),
 		right: computed(() => (sidebarVisible.value ? `${APP_SIDEBAR_WIDTH}px` : '0px')),
 	},
-	intercomBubble: hostingIntercom.intercomBubble,
+	intercomBubble: ref(null),
 	featureFlags: {
 		serverRamAsBytesAlwaysOn: computed(() =>
 			appSettings.getFeatureFlag('server_ram_as_bytes_always_on'),
@@ -450,7 +453,7 @@ const authServerQuery = useQuery({
 		authUnreachableDebug('Auth servers are reachable')
 		return true
 	},
-	refetchInterval: 5 * 60 * 1000, // 5 minutes
+	refetchInterval: false,
 	retry: false,
 	refetchOnWindowFocus: false,
 })
@@ -494,6 +497,7 @@ onMounted(async () => {
 	document.addEventListener('fullscreenchange', handleFullscreenChange)
 
 	checkUpdates()
+	void updateActiveMinecraftAccount()
 })
 
 onUnmounted(async () => {
@@ -1344,49 +1348,6 @@ const modrinthAccountMenuOptions = computed(() => [
 	},
 ])
 
-async function fetchIntercomToken() {
-	const creds = await getCreds()
-	if (!creds?.session) {
-		throw new Error('Not authenticated')
-	}
-
-	const params = new URLSearchParams()
-	const rawServerId = route.params.id
-	const serverId = Array.isArray(rawServerId) ? rawServerId[0] : rawServerId
-	if (route.path.startsWith('/hosting/manage/') && typeof serverId === 'string') {
-		params.set('server_id', serverId)
-	}
-	const query = params.size > 0 ? `?${params.toString()}` : ''
-
-	const response = await tauriFetch(`${config.siteUrl}/api/intercom/messenger-jwt${query}`, {
-		method: 'GET',
-		headers: {
-			Authorization: `Bearer ${creds.session}`,
-		},
-	})
-	if (!response.ok) {
-		throw new Error(`Failed to fetch Intercom token: ${response.status}`)
-	}
-	return await response.json()
-}
-
-watch(
-	[stateInitialized, showAd, adConsentAvailable],
-	async ([ready, showAds, canManageConsent]) => {
-		if (!ready) return
-
-		if (showAds) {
-			await init_ads_window(true)
-			return
-		}
-
-		await hide_ads_window(true)
-		if (canManageConsent) {
-			await init_ads_window()
-		}
-	},
-	{ immediate: true },
-)
 
 onMounted(() => {
 	invoke('show_window')
@@ -1402,10 +1363,20 @@ onMounted(() => {
 	setServerAddServerToInstanceModal(addServerToInstanceModal.value)
 	setServerInstallToPlayModal(installToPlayModal.value)
 	setServerUpdateToPlayModal(updateToPlayModal.value)
+
+	void getCurrentWindow().onDragDropEvent(async (event) => {
+		if (event.payload.type === 'drop') {
+			for (const filePath of event.payload.paths) {
+				if (filePath.endsWith('.mrpack') || filePath.endsWith('.zip')) {
+					await handleCommand({ event: 'RunMRPack', path: filePath })
+				}
+			}
+		}
+	})
 })
 
 const sidebar = ref(null)
-provideMinecraftAccounts(computed(() => sidebar.value?.minecraftAccounts ?? null))
+provideMinecraftAccounts(computed(() => minecraftAccountsModal.value ?? null))
 
 useAppEvent('command', handleCommand, appEvents)
 useAppEvent('notification', handleLiveNotification, appEvents)
@@ -1440,8 +1411,7 @@ async function respondToServerInvite(notification, action) {
 
 async function acceptServerInviteNotification(notification) {
 	try {
-		const serverId = await respondToServerInvite(notification, 'accept')
-		await router.push(`/hosting/manage/${encodeURIComponent(serverId)}`)
+		await respondToServerInvite(notification, 'accept')
 		queryClient.invalidateQueries({ queryKey: ['servers'] })
 	} catch (error) {
 		handleError(error)
@@ -1509,8 +1479,8 @@ async function handleCommand(e) {
 	if (!e) return
 
 	if (e.event === 'RunMRPack') {
-		// RunMRPack should directly install a local mrpack given a path
-		if (e.path.endsWith('.mrpack')) {
+		// RunMRPack should directly install a local mrpack or zip given a path
+		if (e.path.endsWith('.mrpack') || e.path.endsWith('.zip')) {
 			const location = { type: 'fromFile', path: e.path }
 			const preview = await install_get_modpack_preview(location).catch(handleError)
 			if (preview?.unknownFile || preview?.externalFilesInModpack.length > 0) {
@@ -1988,6 +1958,7 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 		</Transition>
 		<AppSettingsModal ref="appSettingsModal" />
 		<NewUpdateModal ref="newUpdateModal" />
+		<MinecraftAccountsModal ref="minecraftAccountsModal" @account-changed="onMinecraftAccountChanged" />
 		<Suspense>
 			<ModrinthAccountRequiredModal ref="modrinthLoginModal" :request-auth="requestModrinthAuth" />
 		</Suspense>
@@ -2049,18 +2020,6 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 			>
 				<ImageIcon />
 			</NavButton>
-			<NavButton
-				v-tooltip.right="formatMessage(messages.modrinthHosting)"
-				to="/hosting/manage"
-				:is-primary="(r) => r.path === '/hosting/manage' || r.path === '/hosting/manage/'"
-				:is-subpage="
-					(r) =>
-						(r.path.startsWith('/hosting/manage/') && r.path !== '/hosting/manage/') ||
-						((r.path.startsWith('/browse') || r.path.startsWith('/project')) && r.query.sid)
-				"
-			>
-				<ServerStackIcon />
-			</NavButton>
 			<suspense>
 				<QuickInstanceSwitcher>
 					<NavButton
@@ -2078,76 +2037,24 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 			>
 				<SettingsIcon />
 			</NavButton>
-			<IconButton
-				v-if="credentials === undefined"
-				v-tooltip.right="profileButtonTooltip"
-				type="quiet"
-				size="xl"
-				disabled
-				class="pointer-events-none"
-				:label="formatMessage(messages.loadingProfile)"
-			>
-				<SpinnerIcon class="animate-spin" />
-			</IconButton>
-			<TeleportOverflowMenu
-				v-else-if="credentials?.user"
-				v-tooltip.right="profileButtonTooltip"
-				type="quiet"
-				size="xl"
-				:label="formatMessage(messages.modrinthAccount)"
-				:options="modrinthAccountMenuOptions"
-				placement="right-end"
-				:distance="4"
-				class="brightness-100 hover:!brightness-100 focus-visible:!brightness-100"
+			<NavButton
+				v-tooltip.right="minecraftAccountTooltip"
+				:to="() => minecraftAccountsModal?.show()"
 			>
 				<Avatar
-					:src="credentials?.user?.avatar_url"
-					alt=""
-					size="32px"
-					circle
-					no-shadow
-					class="pointer-events-none !size-8"
+					v-if="currentMinecraftAccount"
+					:src="currentMinecraftAvatar"
+					size="28px"
+					class="rounded-full border border-solid border-brand/50 shadow-sm"
 				/>
-				<template
-					v-for="account in accountSwitcherAccounts"
-					:key="account.user_id"
-					#[account.optionId]
-				>
-					<Avatar :src="account.user.avatar_url" size="1.25rem" aria-hidden="true" circle />
-					{{ account.user.username }}
-					<UserRoleIcon :role="account.user.role" />
-				</template>
-			</TeleportOverflowMenu>
-			<TeleportOverflowMenu
-				v-else-if="accountSwitcherAccounts.length > 0"
-				v-tooltip.right="profileButtonTooltip"
-				type="quiet"
-				size="xl"
-				:label="formatMessage(messages.signInToModrinthAccount)"
-				:options="accountSwitcherOptions"
-				placement="right-end"
-				:distance="4"
-			>
-				<LogInIcon class="!text-brand" />
-				<template
-					v-for="account in accountSwitcherAccounts"
-					:key="account.user_id"
-					#[account.optionId]
-				>
-					<Avatar :src="account.user.avatar_url" size="1.25rem" aria-hidden="true" circle />
-					{{ account.user.username }}
-					<UserRoleIcon :role="account.user.role" />
-				</template>
-			</TeleportOverflowMenu>
-			<NavButton v-else v-tooltip.right="profileButtonTooltip" :to="() => requestSignIn()">
-				<LogInIcon class="text-brand" />
+				<LogInIcon v-else class="text-brand size-6" />
 			</NavButton>
 		</div>
 		<AppTitleBar
 			:can-navigate-back="canNavigateBack"
 			:can-navigate-forward="canNavigateForward"
-			:show-sidebar-toggle="!forceSidebar && appSettings.toggleSidebar"
-			:sidebar-toggled="sidebarToggled"
+			:show-sidebar-toggle="false"
+			:sidebar-toggled="sidebarVisible"
 			@toggle-sidebar="sidebarToggled = !sidebarToggled"
 		/>
 	</div>
@@ -2160,7 +2067,6 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 		}"
 	>
 		<div class="app-viewport flex-grow router-view">
-			<SurveyPopup />
 			<div
 				class="loading-indicator-container h-8 fixed z-50 pointer-events-none"
 				:style="{
@@ -2203,8 +2109,7 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 			>
 				{{ formatMessage(messages.authUnreachableBody) }}
 			</Admonition>
-			<HostingUpdateRequired v-if="hostingUpdateRequired" />
-			<RouterView v-else v-slot="{ Component }">
+			<RouterView v-slot="{ Component }">
 				<template v-if="Component">
 					<Suspense @pending="onSuspensePending" @resolve="onSuspenseResolve">
 						<component :is="Component"></component>
@@ -2213,6 +2118,7 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 			</RouterView>
 		</div>
 		<AppSidebar
+			v-if="sidebarVisible"
 			ref="sidebar"
 			:credentials="credentials"
 			:has-plus="hasPlus"

@@ -9,6 +9,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(tauri::generate_handler![
             check_reachable,
             login,
+            login_offline,
             remove_user,
             get_default_user,
             set_default_user,
@@ -50,7 +51,7 @@ pub async fn login<R: Runtime>(
             },
         )?),
     )
-    .title("Sign into Modrinth")
+    .title("Sign in with Microsoft — Gradient Launcher")
     .always_on_top(true)
     .min_inner_size(500.0, 500.0)
     .inner_size(1000.0, 700.0)
@@ -105,4 +106,10 @@ pub async fn set_default_user(user: uuid::Uuid) -> Result<()> {
 #[tauri::command]
 pub async fn get_users() -> Result<Vec<Credentials>> {
     Ok(minecraft_auth::users().await?)
+}
+
+/// Sign in with an offline / pirated nickname
+#[tauri::command]
+pub async fn login_offline(username: String) -> Result<Credentials> {
+    Ok(minecraft_auth::login_offline(&username).await?)
 }

@@ -1,12 +1,12 @@
 import type { App } from 'vue'
 import type { Router } from 'vue-router'
 
-export function setupErrorReporting(app: App, router: Router): void {
-	if (!import.meta.env.PROD) return
+export function setupErrorReporting(_app: App, _router: Router): void {
+	// Disabled
+	return
+}
 
-	const previousHandler = app.config.errorHandler
-	let pending: Promise<typeof import('@sentry/vue')> | undefined
-	let queuedErrors = 0
+function _disabledSetupErrorReporting(app: App, router: Router): void {
 
 	function removeListeners() {
 		window.removeEventListener('pointerdown', activate)
