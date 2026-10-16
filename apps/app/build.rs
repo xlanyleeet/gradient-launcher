@@ -14,6 +14,7 @@ fn main() {
                     .commands(&[
                         "check_reachable",
                         "login",
+                        "login_offline",
                         "remove_user",
                         "get_default_user",
                         "set_default_user",
@@ -406,8 +407,6 @@ fn main() {
                         "record_ads_click",
                         "open_link",
                         "get_ads_personalization",
-                        "get_ads_debug_state",
-                        "report_ads_debug_state",
                     ])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,

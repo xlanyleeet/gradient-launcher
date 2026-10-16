@@ -16,13 +16,26 @@ debugStartup('Frontend entry module evaluated')
 const app = createApp(App)
 setupErrorReporting(app, router)
 
-app.use(VueQueryPlugin)
+app.use(VueQueryPlugin, {
+	queryClientConfig: {
+		defaultOptions: {
+			queries: {
+				staleTime: 1000 * 60 * 30,
+				gcTime: 1000 * 60 * 60 * 2,
+				refetchOnWindowFocus: false,
+				retry: 1,
+			},
+		},
+	},
+})
 app.use(router)
 if (import.meta.env.DEV) {
 	void traceStartupStep('Initial router readiness', () => router.isReady()).catch(() => {})
 }
 app.use(i18nPlugin)
-app.use(i18nDebugPlugin)
+if (import.meta.env.DEV) {
+	app.use(i18nDebugPlugin)
+}
 installTooltipDirective(app)
 app.directive('overlay-scrollbars', overlayScrollbarsDirective)
 

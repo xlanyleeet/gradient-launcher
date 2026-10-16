@@ -47,7 +47,7 @@ const errorCollapsed = ref(false)
 
 const title = ref('An error occurred')
 const errorType = ref('unknown')
-const supportLink = ref('https://support.modrinth.com')
+const supportLink = ref('')
 const metadata = ref({})
 
 defineExpose({
@@ -58,8 +58,7 @@ defineExpose({
 		if (errorVal.message && errorVal.message.includes('Minecraft authentication error:')) {
 			title.value = 'Unable to sign in to Minecraft'
 			errorType.value = 'minecraft_auth'
-			supportLink.value =
-				'https://support.modrinth.com/en/articles/9038231-minecraft-sign-in-issues'
+			supportLink.value = ''
 
 			if (
 				errorVal.message.includes('existing connection was forcibly closed') ||
@@ -73,7 +72,7 @@ defineExpose({
 		} else if (errorVal.message && errorVal.message.includes('Move directory error:')) {
 			title.value = 'Could not change app directory'
 			errorType.value = 'directory_move'
-			supportLink.value = 'https://support.modrinth.com'
+			supportLink.value = ''
 
 			if (errorVal.message.includes('directory is not writable')) {
 				metadata.value.readOnly = true
@@ -85,16 +84,16 @@ defineExpose({
 		} else if (errorVal.message && errorVal.message.includes('No loader version selected for')) {
 			title.value = 'No loader selected'
 			errorType.value = 'no_loader_version'
-			supportLink.value = 'https://support.modrinth.com'
+			supportLink.value = ''
 			metadata.value.instanceId = context.instanceId
 		} else if (source === 'state_init') {
-			title.value = 'Error initializing Modrinth App'
+			title.value = 'Error initializing Gradient Launcher'
 			errorType.value = 'state_init'
-			supportLink.value = 'https://support.modrinth.com'
+			supportLink.value = ''
 		} else {
 			title.value = 'An error occurred'
 			errorType.value = 'unknown'
-			supportLink.value = 'https://support.modrinth.com'
+			supportLink.value = ''
 			metadata.value = {}
 		}
 
@@ -287,17 +286,11 @@ async function copyToClipboard(text) {
 				<template v-if="hasDebugInfo">
 					<div class="w-full h-[1px] bg-surface-5 mb-3"></div>
 					<p>
-						If nothing is working and you need help, visit
-						<a :href="supportLink">our support page</a>
-						and start a chat using the widget in the bottom right and we will be more than happy to
-						assist! Make sure to provide the following debug information to the agent:
+						If you encounter this issue repeatedly, please copy the debug details below.
 					</p>
 				</template>
 			</div>
 			<div class="flex items-center gap-2">
-				<ButtonLink :href="supportLink" @click="errorModal.hide()"
-					><ChatIcon /> Get support</ButtonLink
-				>
 				<Button v-if="closable" @click="errorModal.hide()"><XIcon /> Close</Button>
 			</div>
 			<template v-if="hasDebugInfo">

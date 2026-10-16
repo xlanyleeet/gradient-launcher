@@ -99,3 +99,14 @@ pub async fn users() -> crate::Result<Vec<Credentials>> {
     let users = Credentials::get_all(&state.pool).await?;
     Ok(users.into_iter().map(|x| x.1).collect())
 }
+
+/// Adds or logs in an offline player account (pirated / nickname mode)
+#[tracing::instrument]
+pub async fn login_offline(username: &str) -> crate::Result<Credentials> {
+    let clean_name = username.trim();
+    let name = if clean_name.is_empty() { "Player" } else { clean_name };
+    let creds = Credentials::create_offline(name);
+    let state = State::get().await?;
+    creds.upsert(&state.pool).await?;
+    Ok(creds)
+}

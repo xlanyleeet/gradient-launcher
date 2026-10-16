@@ -3,9 +3,13 @@ name = "theseus_gui"
 # The actual version is set by the theseus-build workflow on tagging
 version = "1.0.0-local"
 edition.workspace = true
-description = "The Modrinth App is a desktop application for managing your Minecraft mods"
+description = "Gradient Launcher - Modern desktop Minecraft launcher and cosmetic manager"
 repository = "https://github.com/modrinth/code/apps/app/"
 license = "GPL-3.0-only"
+
+[[bin]]
+name = "gradient-launcher"
+path = "src/main.rs"
 
 [dependencies]
 aes-gcm = { workspace = true }

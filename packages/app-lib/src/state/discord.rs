@@ -70,11 +70,14 @@ impl DiscordGuard {
             return Ok(());
         }
 
-        let activity = Activity::new().state(msg).assets(
-            Assets::new()
-                .large_image("modrinth_simple")
-                .large_text("Modrinth Logo"),
-        );
+        let activity = Activity::new()
+            .details("Gradient Launcher")
+            .state(msg)
+            .assets(
+                Assets::new()
+                    .large_image("modrinth_simple")
+                    .large_text("Gradient Launcher"),
+            );
 
         // Attempt to set the activity
         // If the existing connection fails, attempt to reconnect and try again
@@ -136,12 +139,12 @@ impl DiscordGuard {
         let running_instances = state.process_manager.get_all();
         if let Some(existing_child) = running_instances.first() {
             self.set_activity(
-                &format!("Playing {}", existing_child.instance_name),
+                &format!("Грає в {}", existing_child.instance_name),
                 reconnect_if_fail,
             )
             .await?;
         } else {
-            self.set_activity("Idling...", reconnect_if_fail).await?;
+            self.set_activity("У лаунчері", reconnect_if_fail).await?;
         }
         Ok(())
     }

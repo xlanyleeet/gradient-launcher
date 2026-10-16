@@ -3060,16 +3060,16 @@
     "defaultMessage": "Keep files updated when the server changes"
   },
   "modal.open-in-app.get-app": {
-    "defaultMessage": "Get Modrinth App"
+    "defaultMessage": "Get Gradient Launcher"
   },
   "modal.open-in-app.opening-automatically": {
-    "defaultMessage": "The Modrinth App will open automatically..."
+    "defaultMessage": "The Gradient Launcher will open automatically..."
   },
   "modal.open-in-app.title": {
-    "defaultMessage": "Opening Modrinth App"
+    "defaultMessage": "Opening Gradient Launcher"
   },
   "modal.open-in-app.why-use": {
-    "defaultMessage": "Why use the Modrinth App"
+    "defaultMessage": "Why use the Gradient Launcher"
   },
   "notification.error.title": {
     "defaultMessage": "An error occurred"
@@ -5460,7 +5460,7 @@
     "defaultMessage": "New server"
   },
   "servers.list-empty.no-servers-description": {
-    "defaultMessage": "Install mods, invite friends, and play together all from the Modrinth App."
+    "defaultMessage": "Install mods, invite friends, and play together all from the Gradient Launcher."
   },
   "servers.list-empty.one-click-mod-installs-description": {
     "defaultMessage": "Pick your favorite mods and we handle the rest."
@@ -5469,7 +5469,7 @@
     "defaultMessage": "One-click mod installs"
   },
   "servers.list-empty.play-with-friends-description": {
-    "defaultMessage": "Invite friends to play your server with one-click play from the Modrinth App."
+    "defaultMessage": "Invite friends to play your server with one-click play from the Gradient Launcher."
   },
   "servers.list-empty.play-with-friends-title": {
     "defaultMessage": "Play with friends"
@@ -6147,7 +6147,7 @@
     "defaultMessage": "Search results"
   },
   "settings.language.coverage.app-tooltip": {
-    "defaultMessage": "About {percentage}% of the Modrinth App is available in this language."
+    "defaultMessage": "About {percentage}% of the Gradient Launcher is available in this language."
   },
   "settings.language.coverage.label": {
     "defaultMessage": "{percentage}% supported"

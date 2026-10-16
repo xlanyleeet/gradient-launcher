@@ -139,7 +139,6 @@
 					v-else
 					ref="fileEditorRef"
 					:file="ctx.editingFile.value"
-					:editor-component="editorComponent"
 					@close="handleEditorClose"
 				/>
 			</div>
@@ -298,11 +297,6 @@ const { addNotification } = injectNotificationManager()
 const ctx = injectFileManager()
 const filePicker = injectFilePicker(null)
 
-const editorComponent = shallowRef<Component | null>(null)
-import('vue3-ace-editor').then(async (mod) => {
-	await Promise.all([import('#ui/utils/ace-theme'), import('#ui/utils/ace-mode-log.ts')])
-	editorComponent.value = mod.VAceEditor
-})
 
 const baseId = `files-${Math.random().toString(36).slice(2, 9)}`
 

@@ -274,7 +274,7 @@ const authServerQuery = useQuery({
 		await check_reachable()
 		return true
 	},
-	refetchInterval: 5 * 60 * 1000,
+	refetchInterval: false,
 	retry: false,
 	refetchOnWindowFocus: false,
 })

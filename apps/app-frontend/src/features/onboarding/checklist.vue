@@ -54,12 +54,6 @@ const steps = computed(() => [
 		complete: hasLoggedIntoMinecraft.value,
 		action: () => emit('login-minecraft'),
 	},
-	{
-		id: 'login-modrinth',
-		label: formatMessage(messages.loginModrinth),
-		complete: hasLoggedIntoModrinth.value,
-		action: () => emit('login-modrinth'),
-	},
 ])
 
 const accordionButtonClass = computed(

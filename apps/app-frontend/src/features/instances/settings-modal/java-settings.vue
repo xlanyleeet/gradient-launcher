@@ -347,6 +347,43 @@ const messages = defineMessages({
 					:placeholder="formatMessage(messages.enterJavaArguments)"
 					wrapper-class="w-full"
 				/>
+				<div class="flex flex-wrap gap-2 mt-2">
+					<button
+						type="button"
+						:disabled="!overrideJavaArgs"
+						class="text-xs px-2.5 py-1 rounded-lg bg-surface-3 hover:bg-surface-4 text-contrast border border-solid border-surface-5 cursor-pointer disabled:opacity-50 transition-colors"
+						@click="javaArgs = ''"
+					>
+						Стандартні
+					</button>
+					<button
+						type="button"
+						:disabled="!overrideJavaArgs"
+						class="text-xs px-2.5 py-1 rounded-lg bg-brand/20 hover:bg-brand/30 text-brand border border-solid border-brand/40 font-medium cursor-pointer disabled:opacity-50 transition-colors"
+						title="Оптимальні прапорці G1GC проти фризів та просідань FPS"
+						@click="javaArgs = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1'"
+					>
+						⚡ Aikar's Flags (FPS Boost)
+					</button>
+					<button
+						type="button"
+						:disabled="!overrideJavaArgs"
+						class="text-xs px-2.5 py-1 rounded-lg bg-purple/20 hover:bg-purple/30 text-purple border border-solid border-purple/40 font-medium cursor-pointer disabled:opacity-50 transition-colors"
+						title="Наднизька затримка збирача сміття для важких збірок"
+						@click="javaArgs = '-XX:+UseShenandoahGC -XX:+UnlockExperimentalVMOptions -XX:ShenandoahGCHeuristics=adaptive -XX:+AlwaysPreTouch'"
+					>
+						Shenandoah GC
+					</button>
+					<button
+						type="button"
+						:disabled="!overrideJavaArgs"
+						class="text-xs px-2.5 py-1 rounded-lg bg-surface-3 hover:bg-surface-4 text-contrast border border-solid border-surface-5 cursor-pointer disabled:opacity-50 transition-colors"
+						title="Сучасний ZGC збирач сміття для Java 17/21"
+						@click="javaArgs = '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+AlwaysPreTouch'"
+					>
+						ZGC (Java 17+)
+					</button>
+				</div>
 			</div>
 		</section>
 
