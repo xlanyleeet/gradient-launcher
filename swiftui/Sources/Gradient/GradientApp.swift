@@ -520,12 +520,12 @@ private struct LauncherView: View {
             loadedTab = nil
             return
         }
-        let key = "\(profile.id)/\(profile.running)/\(profile.last_played ?? "")"
-        if coverKey != key {
+        let requestedCoverKey = "\(profile.id)/\(profile.running)/\(profile.last_played ?? "")"
+        if coverKey != requestedCoverKey {
             let path = try await core.call("cover", ["id": profile.id], as: String?.self)
             guard selectedID == profile.id else { return }
             cover = path.flatMap { NSImage(contentsOfFile: $0) }
-            coverKey = key
+            coverKey = requestedCoverKey
         }
         let requestedTab = tab
         let key = tabKey(profile, requestedTab)
