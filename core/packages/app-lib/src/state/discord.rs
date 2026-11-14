@@ -132,7 +132,7 @@ impl DiscordGuard {
 
         let settings = crate::state::Settings::get(&state.pool).await?;
         if !settings.discord_rpc {
-            println!("Discord is disabled, clearing activity");
+            tracing::debug!("Discord is disabled, clearing activity");
             return self.clear_activity(true).await;
         }
 

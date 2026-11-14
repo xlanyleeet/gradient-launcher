@@ -1,0 +1,79 @@
+name: Build Gradient Native
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [native/github-actions]
+
+permissions:
+  contents: read
+
+env:
+  SQLX_OFFLINE: 'true'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+      - name: Build Rust core
+        working-directory: core
+        run: cargo build --locked --release -p gradient-core
+      - name: Build WinUI
+        run: MSBuild winui/Gradient.WinUI.csproj /restore /p:Platform=x64 /p:Configuration=Release
+      - name: Verify output
+        shell: pwsh
+        run: |
+          $output = 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
+          foreach ($path in 'Gradient.WinUI.exe', 'gradient-core.exe', 'Assets/Cover.png') {
+            if (!(Test-Path (Join-Path $output $path) -PathType Leaf)) {
+              throw "Build output missing: $path"
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradient-native-windows-x64
+          path: winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/
+          if-no-files-found: error
+
+  macos:
+    name: macOS Apple Silicon
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build Rust core
+        working-directory: core
+        run: cargo build --locked --release -p gradient-core
+      - name: Build SwiftUI
+        working-directory: swiftui
+        run: swift build -c release
+      - name: Archive macOS preview
+        shell: bash
+        run: |
+          output="$(swift build --package-path swiftui -c release --show-bin-path)"
+          stage="$RUNNER_TEMP/gradient-native-macos"
+          mkdir -p "$stage"
+          cp "$output/Gradient" core/target/release/gradient-core "$stage/"
+          cp -R "$output/Gradient_Gradient.bundle" "$stage/"
+          tar -czf gradient-native-macos-arm64.tar.gz -C "$stage" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradient-native-macos-arm64
+          path: gradient-native-macos-arm64.tar.gz
+          if-no-files-found: error

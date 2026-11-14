@@ -1,49 +1,51 @@
-<picture>
-	<source media="(prefers-color-scheme: light)" srcset=".github/assets/monorepo_cover_light.png">
-	<img alt="Modrinth Monorepo Cover" src=".github/assets/monorepo_cover.png">
-</picture>
+# Gradient Native
 
-![Issues](https://img.shields.io/github/issues-raw/Modrinth/code?color=c78aff&label=issues&style=for-the-badge)
-![Pull Requests](https://img.shields.io/github/issues-pr-raw/Modrinth/code?color=c78aff&label=PRs&style=for-the-badge)
-![Contributors](https://img.shields.io/github/contributors/Modrinth/code?color=c78aff&label=contributors&style=for-the-badge)
-![Lines of Code](https://img.shields.io/endpoint?url=https://loctopus.creeperkatze.dev/github/modrinth/code/badge?style=flat&logoColor=white&color=c78aff&style=for-the-badge)
-![Commit Activity](https://img.shields.io/github/commit-activity/m/Modrinth/code?color=c78aff&label=commits&style=for-the-badge)
-![Last Commit](https://img.shields.io/github/last-commit/Modrinth/code?color=c78aff&label=last%20commit&style=for-the-badge)
+Копія Tauri-репозиторію з історією Git. Нативні клієнти використовують той самий Rust-код Minecraft-лаунчера через локальний процес `gradient-core`.
 
-## Modrinth Monorepo
+| Папка | Що всередині |
+| --- | --- |
+| `core/` | Оригінальний workspace з Tauri/Vue, ядро `packages/app-lib` і новий адаптер `apps/launcher-bridge`. |
+| `winui/` | Нативна оболонка на C# та WinUI 3. |
+| `swiftui/` | Нативна оболонка на SwiftUI для macOS 15 і новіших. |
 
-Welcome to the Modrinth Monorepo, the primary codebase for the Modrinth website, app, API and documentation. It contains ![Lines of code](https://img.shields.io/endpoint?url=https://loctopus.creeperkatze.dev/github/modrinth/code/badge%3Fformat%3Dhuman&logoColor=white&color=black&label=) lines of code and has ![Contributors](https://img.shields.io/github/contributors/Modrinth/code?color=black&label=) contributors!
+Перший зріз включає бібліотеку, пошук профілів, обкладинку з останнього скриншота, Microsoft та офлайн-вхід, імпорт `.mrpack`, чергу, запуск, зупинку та живий лог. Каталог Discover і розширені вкладки профілю ще доступні через вихідний Tauri-клієнт.
 
-If you're not a developer and you've stumbled upon this repository, you can access the web interface on the [Modrinth website](https://modrinth.com) and download the latest release of the app [here](https://modrinth.com/app).
+## Windows
 
-## Development
+Потрібні Rust із toolchain workspace, Java 17 для Gradle, Visual Studio з C++ Build Tools і Windows SDK, .NET 8 та компоненти збірки WinUI 3 / MSIX. Для Microsoft-входу потрібен WebView2 Runtime.
 
-This repository contains several projects. For detailed development information, please refer to their respective guides:
+З кореня репозиторію в x64 Developer PowerShell:
 
-| Project       | Directory              | Guide                                                     |
-| ------------- | ---------------------- | --------------------------------------------------------- |
-| Website       | `apps/frontend`        | [Guide](https://docs.modrinth.com/contributing/knossos/)  |
-| App           | `apps/app`             | [Guide](https://docs.modrinth.com/contributing/theseus/)  |
-| API           | `apps/labrinth`        | [Guide](https://docs.modrinth.com/contributing/labrinth/) |
-| Meta          | `apps/daedalus_client` | [Guide](https://docs.modrinth.com/contributing/daedalus/) |
-| Documentation | `apps/docs`            | [Guide](https://docs.modrinth.com/contributing/docs/)     |
+```powershell
+$env:SQLX_OFFLINE = 'true'
+Push-Location core
+cargo build --locked --release -p gradient-core
+Pop-Location
+MSBuild winui/Gradient.WinUI.csproj /restore /p:Platform=x64 /p:Configuration=Release
+```
 
-Shared libraries live in `packages/`.
+Запустіть `Gradient.WinUI.exe` із каталогу Release під `winui/bin`. Проєкт копіює зібране ядро поруч із застосунком. Для іншого розташування задайте абсолютний шлях до ядра через `GRADIENT_CORE`.
 
-## Contributing
+## macOS
 
-We welcome contributions! Before submitting any contributions, please read our [contributing guidelines](https://docs.modrinth.com/contributing/getting-started/).
+Потрібні macOS 15+, Xcode 16+ зі Swift 6, Rust і Java 17 для Gradle. З кореня репозиторію:
 
-If you plan to fork this repository for your own purposes, please review our [copying guidelines](COPYING.md).
+```sh
+root="$(pwd)"
+cd "$root/core"
+SQLX_OFFLINE=true cargo build --locked --release -p gradient-core
+cd "$root/swiftui"
+GRADIENT_CORE="$root/core/target/release/gradient-core" swift run Gradient
+```
 
-## Security
+## GitHub Actions
 
-If you discover a security vulnerability within our codebase, please follow our [responsible disclosure guidelines](https://modrinth.com/legal/security).
+Workflow **Build Gradient Native** запускається після push у `native/github-actions`. Після додавання workflow до default branch його також можна запускати вручну в **Actions → Build Gradient Native → Run workflow**.
 
-## Support
+У **Artifacts** будуть дві збірки. Для Windows розпакуйте весь архів і відкрийте `Gradient.WinUI.exe`. Для macOS розпакуйте `.tar.gz` і виконайте з отриманої папки `GRADIENT_CORE="$PWD/gradient-core" ./Gradient`. Це збірки для тестування. Для Windows потрібен .NET 8 Desktop Runtime, а для Microsoft-входу — WebView2 Runtime.
 
-If you need help with the Modrinth web interface or app, please visit our [support page](https://support.modrinth.com). For general inquiries, you can also join our [Discord server](https://discord.modrinth.com).
+## Дані та протокол
 
-## License
+За замовчуванням ядро відкриває окремий каталог `com.gradient.launcher.native`. Для перевірки на наявних профілях задайте `THESEUS_CONFIG_DIR` на копію каталогу даних Tauri. Якщо в налаштуваннях заданий зовнішній шлях до файлів профілів, скопіюйте їх і виправте шлях у тестових налаштуваннях перед запуском. Нативне блокування захищає від одночасного запису двома нативними клієнтами. При виході з оболонки ядро зберігає процеси гри й активні встановлення до їх завершення, а новий клієнт тієї ж бази зможе підключитися після виходу попереднього ядра.
 
-All packages in this repository are licensed under their respective licenses. See the [copying guidelines](COPYING.md) for details, including restrictions on Modrinth branding.
+Перший рядок stdout — `{"protocol":1}`. Далі оболонка надсилає по одному JSON-об’єкту на рядок. На кожну команду ядро повертає один рядок `{"ok":...}` або `{"error":"..."}`. Стан бібліотеки, черги й логів клієнти оновлюють опитуванням. Microsoft-вхід використовує OAuth-потік вихідної Tauri-версії, а WebView використовується для вікна входу.

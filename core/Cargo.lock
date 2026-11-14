@@ -4557,6 +4557,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gradient-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "theseus",
+ "tokio",
+ "uuid 1.23.3",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

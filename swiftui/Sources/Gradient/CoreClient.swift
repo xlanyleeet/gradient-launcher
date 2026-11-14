@@ -1,0 +1,99 @@
+import Foundation
+
+actor CoreClient {
+    private var process: Process?
+    private var input: FileHandle?
+    private var output: FileHandle?
+    private var buffer = Data()
+
+    func call<T: Decodable>(_ method: String, _ values: [String: String] = [:], as _: T.Type) throws -> T {
+        if process?.isRunning != true {
+            try connect()
+        }
+
+        let request = values.merging(["method": method]) { _, method in method }
+        var line = try JSONEncoder().encode(request)
+        line.append(10)
+        guard let input else { throw CoreError("Канал ядра закрито.") }
+        try input.write(contentsOf: line)
+        return try JSONDecoder().decode(Reply<T>.self, from: readLine()).value()
+    }
+
+    private func connect() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let embedded = Bundle.main.url(forAuxiliaryExecutable: "gradient-core")
+        let executable = environment["GRADIENT_CORE"].map { URL(fileURLWithPath: $0) } ?? embedded
+        guard let executable else { throw CoreError("Вкажіть шлях до ядра в GRADIENT_CORE.") }
+
+        let child = Process()
+        let toCore = Pipe()
+        let fromCore = Pipe()
+        child.executableURL = executable
+        child.standardInput = toCore
+        child.standardOutput = fromCore
+        try child.run()
+        process = child
+        input = toCore.fileHandleForWriting
+        output = fromCore.fileHandleForReading
+        buffer.removeAll()
+        do {
+            let hello = try JSONDecoder().decode(Hello.self, from: readLine())
+            guard hello.version == 1 else { throw CoreError("Несумісна версія ядра.") }
+        } catch {
+            try? input?.close()
+            process = nil
+            throw error
+        }
+    }
+
+    private func readLine() throws -> Data {
+        guard let output else { throw CoreError("Канал ядра закрито.") }
+        while true {
+            if let newline = buffer.firstIndex(of: 10) {
+                let line = Data(buffer[..<newline])
+                buffer.removeSubrange(...newline)
+                return line
+            }
+            let data = output.availableData
+            guard !data.isEmpty else { throw CoreError("Ядро завершило роботу. Перевірте каталог даних.") }
+            buffer.append(data)
+        }
+    }
+}
+
+private struct Hello: Decodable {
+    let version: Int
+    enum CodingKeys: String, CodingKey { case version = "protocol" }
+}
+
+private struct Reply<T: Decodable>: Decodable {
+    var result: T?
+    var error: String?
+
+    enum CodingKeys: String, CodingKey { case result = "ok", error }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        if container.contains(.result) {
+            result = try container.decode(T.self, forKey: .result)
+        }
+    }
+
+    func value() throws -> T {
+        if let error { throw CoreError(error) }
+        guard let result else { throw CoreError("Порожня відповідь ядра.") }
+        return result
+    }
+}
+
+struct CoreError: LocalizedError {
+    let errorDescription: String?
+    init(_ message: String) { errorDescription = message }
+}
+
+struct EmptyReply: Decodable {
+    init(from decoder: Decoder) throws {
+        _ = try decoder.singleValueContainer()
+    }
+}
