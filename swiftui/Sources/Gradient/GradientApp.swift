@@ -22,6 +22,18 @@ private struct Profile: Decodable, Identifiable {
     let last_played: String?
     let running: Bool
     let quarantined: Bool
+    let icon: String?
+}
+
+private struct Account: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let selected: Bool
+}
+
+private enum LibrarySheet: String, Identifiable {
+    case create, rename, accounts
+    var id: String { rawValue }
 }
 
 private struct Job: Decodable, Identifiable {
@@ -85,6 +97,15 @@ private struct LauncherView: View {
     @State private var nickname = ""
     @State private var loginURL: URL?
     @State private var showMicrosoft = false
+    @State private var librarySheet: LibrarySheet?
+    @State private var editedProfile: Profile?
+    @State private var profileName = ""
+    @State private var versions: [String] = []
+    @State private var version = ""
+    @State private var loader = "vanilla"
+    @State private var accounts: [Account] = []
+    @State private var profileToRemove: Profile?
+    @State private var accountToRemove: Account?
 
     private var profile: Profile? { profiles.first { $0.id == selectedID } }
     private var filteredProfiles: [Profile] {
@@ -96,7 +117,16 @@ private struct LauncherView: View {
             List(selection: $selectedID) {
                 Section("Профілі") {
                     ForEach(filteredProfiles) { entry in
-                        Label(entry.name, systemImage: entry.running ? "play.circle.fill" : "cube")
+                        Label {
+                            Text(entry.name)
+                        } icon: {
+                            if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
+                                Image(nsImage: image).resizable().scaledToFit()
+                                    .frame(width: 19, height: 19)
+                            } else {
+                                Image(systemName: entry.running ? "play.circle.fill" : "cube")
+                            }
+                        }
                             .tag(entry.id)
                     }
                 }
@@ -104,6 +134,7 @@ private struct LauncherView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 218)
             .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: 8) {
+                    Button("Акаунти", systemImage: "person.2", action: showAccounts)
                     Button("Увійти в Microsoft", systemImage: "person.crop.circle", action: beginMicrosoft)
                     Button("Офлайн-акаунт", systemImage: "person") { showLogin = true }
                 }
@@ -138,6 +169,7 @@ private struct LauncherView: View {
             .foregroundStyle(ink)
             .preferredColorScheme(.light)
             .toolbar {
+                Button("Новий профіль", systemImage: "plus.square", action: beginCreateProfile)
                 Button("Імпортувати .mrpack", systemImage: "plus", action: importPack)
                 Button("Оновити", systemImage: "arrow.clockwise") {
                     coverKey = nil
@@ -186,6 +218,18 @@ private struct LauncherView: View {
                 }
                 .frame(width: 680, height: 550)
             }
+        }
+        .sheet(item: $librarySheet) { sheet in
+            libraryEditor(sheet)
+        }
+        .alert("Видалити профіль?", isPresented: Binding(
+            get: { profileToRemove != nil },
+            set: { if !$0 { profileToRemove = nil } }
+        ), presenting: profileToRemove) { entry in
+            Button("Видалити", role: .destructive) { mutate("remove_profile", ["id": entry.id]) }
+            Button("Скасувати", role: .cancel) {}
+        } message: { entry in
+            Text("«\(entry.name)» і його локальні файли буде видалено.")
         }
     }
 
@@ -293,24 +337,148 @@ private struct LauncherView: View {
                     Text(profile?.name ?? "Бібліотека")
                         .font(.system(size: 42, weight: .bold))
                         .lineLimit(2)
-                    Button {
-                        guard let profile else { return }
-                        mutate(profile.running ? "stop" : "play", ["id": profile.id])
-                    } label: {
-                        Label(profile?.running == true ? "Зупинити" : "Грати",
-                              systemImage: profile?.running == true ? "stop.fill" : "play.fill")
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
+                    HStack(spacing: 8) {
+                        Button {
+                            guard let profile else { return }
+                            mutate(profile.running ? "stop" : "play", ["id": profile.id])
+                        } label: {
+                            Label(profile?.running == true ? "Зупинити" : "Грати",
+                                  systemImage: profile?.running == true ? "stop.fill" : "play.fill")
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(ink)
+                        .buttonBorderShape(.capsule)
+                        .disabled(busy || profile == nil || (profile?.quarantined == true && profile?.running != true))
+                        if let profile { profileMenu(profile) }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(ink)
-                    .buttonBorderShape(.capsule)
-                    .disabled(busy || profile == nil || (profile?.quarantined == true && profile?.running != true))
                 }
                 .padding(30)
             }
         }
         .frame(height: 350)
+    }
+
+    private func profileMenu(_ profile: Profile) -> some View {
+        Menu("Дії профілю") {
+            Button("Перейменувати") {
+                editedProfile = profile
+                profileName = profile.name
+                librarySheet = .rename
+            }
+            Button("Змінити іконку") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = [.png, .jpeg, .webP]
+                if panel.runModal() == .OK, let url = panel.url {
+                    mutate("profile_icon", ["id": profile.id, "path": url.path])
+                }
+            }
+            Button("Дублювати") {
+                mutate("duplicate_profile", ["id": profile.id], message: "Дублювання додано до черги.")
+            }
+            .disabled(profile.running)
+            Divider()
+            Button("Видалити профіль", role: .destructive) { profileToRemove = profile }
+                .disabled(profile.running)
+        }
+        .fixedSize()
+        .disabled(busy)
+    }
+
+    private func beginCreateProfile() {
+        Task {
+            await perform {
+                versions = try await core.call("game_versions", as: [String].self)
+                version = versions.first ?? ""
+                profileName = ""
+                loader = "vanilla"
+                librarySheet = .create
+            }
+        }
+    }
+
+    private func showAccounts() {
+        Task {
+            await perform {
+                accounts = try await core.call("accounts", as: [Account].self)
+                accountToRemove = nil
+                librarySheet = .accounts
+            }
+        }
+    }
+
+    @ViewBuilder private func libraryEditor(_ sheet: LibrarySheet) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if sheet == .accounts {
+                Text("Акаунти Minecraft").font(.title2.bold())
+                if accounts.isEmpty { Text("Увійдіть у Microsoft або додайте офлайн-акаунт.") }
+                ForEach(accounts) { account in
+                    HStack {
+                        Text(account.name)
+                        Spacer()
+                        if account.selected {
+                            Label("Основний", systemImage: "checkmark")
+                        } else {
+                            Button("Зробити основним") {
+                                librarySheet = nil
+                                mutate("use_account", ["id": account.id], message: "Основний акаунт · \(account.name)")
+                            }
+                        }
+                        Button("Видалити") { accountToRemove = account }
+                    }
+                }
+                Button("Готово") { librarySheet = nil }.keyboardShortcut(.defaultAction)
+            } else {
+                Text(sheet == .create ? "Новий профіль" : "Перейменувати профіль").font(.title2.bold())
+                Form {
+                    TextField("Назва", text: $profileName)
+                    if sheet == .create {
+                        Picker("Minecraft", selection: $version) {
+                            if versions.isEmpty { Text("Версій немає").tag("") }
+                            ForEach(versions, id: \.self) { Text($0).tag($0) }
+                        }
+                        Picker("Завантажувач", selection: $loader) {
+                            Text("Vanilla").tag("vanilla")
+                            Text("Fabric").tag("fabric")
+                            Text("Forge").tag("forge")
+                            Text("NeoForge").tag("neoforge")
+                            Text("Quilt").tag("quilt")
+                        }
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button("Скасувати") { librarySheet = nil }.keyboardShortcut(.cancelAction)
+                    Button(sheet == .create ? "Створити" : "Зберегти") {
+                        librarySheet = nil
+                        if sheet == .create {
+                            mutate("create_profile", ["name": profileName, "version": version, "loader": loader],
+                                   message: "Профіль додано до черги.")
+                        } else if let editedProfile {
+                            mutate("rename_profile", ["id": editedProfile.id, "name": profileName])
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(profileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              (sheet == .create && version.isEmpty))
+                }
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 450)
+        .alert("Видалити акаунт?", isPresented: Binding(
+            get: { accountToRemove != nil },
+            set: { if !$0 { accountToRemove = nil } }
+        ), presenting: accountToRemove) { account in
+            Button("Видалити", role: .destructive) {
+                librarySheet = nil
+                mutate("remove_account", ["id": account.id])
+            }
+            Button("Скасувати", role: .cancel) {}
+        } message: { account in
+            Text(account.name)
+        }
     }
 
     private func jobRow(_ job: Job) -> some View {

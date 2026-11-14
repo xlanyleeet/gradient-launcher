@@ -10,7 +10,11 @@ namespace Gradient;
 
 public sealed partial class MainWindow : Window
 {
-    public sealed record Profile(string id, string name, string version, string loader, string? last_played, bool running, bool quarantined);
+    public sealed record Profile(string id, string name, string version, string loader, string? last_played, bool running, bool quarantined, string? icon)
+    {
+        public BitmapImage? IconSource => Uri.TryCreate(icon, UriKind.Absolute, out var uri) && uri.IsFile
+            ? new BitmapImage(uri) : null;
+    }
     public sealed record Job(string job_id, string? instance_id, string status, string phase,
         bool paused, bool can_pause, bool can_cancel, double? progress, string? error);
 
@@ -94,6 +98,7 @@ public sealed partial class MainWindow : Window
         Metadata.Text = selected is null ? "Виберіть профіль або імпортуйте модпак."
             : $"Minecraft {selected.version}   ·   {selected.loader}   ·   Останній запуск  {selected.last_played ?? "—"}";
         PlayButton.IsEnabled = selected is { quarantined: false } || selected?.running == true;
+        ProfileActions.IsEnabled = selected is not null;
         PlayButton.Content = selected?.running == true ? "■  Зупинити" : "▶  Грати";
         if (selected is null)
         {

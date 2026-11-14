@@ -7,10 +7,21 @@
             <StackPanel Padding="18,26,18,12" Spacing="12">
                 <TextBlock Text="Gradient" FontSize="25" FontWeight="Bold"/>
                 <TextBox x:Name="Search" PlaceholderText="Пошук профілів" TextChanged="SearchChanged"/>
+                <Button Content="+  Новий профіль" Click="CreateProfile"/>
                 <Button Content="+  Імпортувати .mrpack" Click="Import"/>
             </StackPanel>
-            <ListView x:Name="Profiles" Grid.Row="1" Margin="8,0" DisplayMemberPath="name" SelectionChanged="Select"/>
+            <ListView x:Name="Profiles" Grid.Row="1" Margin="8,0" SelectionChanged="Select">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Image Width="22" Height="22" Source="{Binding IconSource}"/>
+                            <TextBlock Text="{Binding name}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
             <StackPanel Grid.Row="2" Margin="18,12" Spacing="8">
+                <Button Content="Акаунти" Click="ManageAccounts"/>
                 <Button Content="Увійти в Microsoft" Click="MicrosoftLogin"/>
                 <Button Content="Офлайн-акаунт" Click="Login"/>
             </StackPanel>
@@ -33,6 +44,17 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button x:Name="PlayButton" Background="#112C2B" Foreground="White" Content="▶  Грати" Click="Play" IsEnabled="False" Padding="24,8" CornerRadius="18"/>
                             <Button Content="Оновити" Click="Refresh"/>
+                            <DropDownButton x:Name="ProfileActions" Content="Дії профілю" IsEnabled="False">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Text="Перейменувати" Click="RenameProfile"/>
+                                        <MenuFlyoutItem Text="Змінити іконку" Click="ChangeProfileIcon"/>
+                                        <MenuFlyoutItem Text="Дублювати" Click="DuplicateProfile"/>
+                                        <MenuFlyoutSeparator/>
+                                        <MenuFlyoutItem Text="Видалити профіль" Click="RemoveProfile"/>
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
                         </StackPanel>
                     </StackPanel>
                 </Grid>

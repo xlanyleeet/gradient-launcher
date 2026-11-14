@@ -15,6 +15,33 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Library,
+    GameVersions,
+    CreateProfile {
+        name: String,
+        version: String,
+        loader: theseus::data::ModLoader,
+    },
+    RenameProfile {
+        id: String,
+        name: String,
+    },
+    ProfileIcon {
+        id: String,
+        path: PathBuf,
+    },
+    DuplicateProfile {
+        id: String,
+    },
+    RemoveProfile {
+        id: String,
+    },
+    Accounts,
+    UseAccount {
+        id: uuid::Uuid,
+    },
+    RemoveAccount {
+        id: uuid::Uuid,
+    },
     Cover {
         id: String,
     },
@@ -109,6 +136,59 @@ async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
 
 async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     Ok(match request {
+        Request::GameVersions => {
+            let manifest = theseus::metadata::get_minecraft_versions().await?;
+            json!(manifest.versions.into_iter()
+                .filter(|version| version.type_.as_str() == "release")
+                .map(|version| version.id).collect::<Vec<_>>())
+        }
+        Request::CreateProfile { name, version, loader } => {
+            let name = name.trim();
+            if name.is_empty() { return Err("Введіть назву профілю.".into()); }
+            install::create_instance(
+                name.to_owned(), version, loader, None, None, None,
+                theseus::data::InstanceLink::Unmanaged,
+            ).await?;
+            Value::Null
+        }
+        Request::RenameProfile { id, name } => {
+            let name = name.trim();
+            if name.is_empty() { return Err("Введіть назву профілю.".into()); }
+            instance::edit(&id, theseus::data::EditInstance {
+                name: Some(name.to_owned()),
+                ..Default::default()
+            }).await?;
+            Value::Null
+        }
+        Request::ProfileIcon { id, path } => {
+            instance::edit_icon(&id, Some(&path)).await?;
+            Value::Null
+        }
+        Request::DuplicateProfile { id } => {
+            require_stopped(&id).await?;
+            install::duplicate_instance(id).await?;
+            Value::Null
+        }
+        Request::RemoveProfile { id } => {
+            require_stopped(&id).await?;
+            instance::remove(&id).await?;
+            Value::Null
+        }
+        Request::Accounts => {
+            let selected = minecraft_auth::get_default_user().await?;
+            json!(minecraft_auth::users().await?.into_iter().map(|account| {
+                let profile = account.offline_profile;
+                json!({ "id": profile.id, "name": profile.name, "selected": selected == Some(profile.id) })
+            }).collect::<Vec<_>>())
+        }
+        Request::UseAccount { id } => {
+            minecraft_auth::set_default_user(id).await?;
+            Value::Null
+        }
+        Request::RemoveAccount { id } => {
+            minecraft_auth::remove_user(id).await?;
+            Value::Null
+        }
         Request::Library => {
             let running = process::get_all().await?;
             let profiles: Vec<_> = instance::list().await?.into_iter().map(|entry| {
@@ -116,6 +196,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 json!({
                     "id": profile.id,
                     "name": profile.name,
+                    "icon": profile.icon_path,
                     "version": entry.applied_content_set.game_version,
                     "loader": entry.applied_content_set.loader,
                     "last_played": profile.last_played.map(|date| date.format("%Y-%m-%d").to_string()),

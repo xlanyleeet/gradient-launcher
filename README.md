@@ -12,6 +12,8 @@
 
 ## Windows
 
+У бібліотеці можна створити чистий профіль із релізною версією Minecraft, перейменувати його, змінити іконку, дублювати або видалити. У діалозі **Акаунти** можна переглядати збережені Minecraft-акаунти, обирати основний і видаляти непотрібні.
+
 Потрібні Rust із toolchain workspace, Java 17 для Gradle, Visual Studio з C++ Build Tools і Windows SDK, .NET 8 та компоненти збірки WinUI 3 / MSIX. Для Microsoft-входу потрібен WebView2 Runtime.
 
 З кореня репозиторію в x64 Developer PowerShell:
