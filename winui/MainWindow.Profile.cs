@@ -9,7 +9,7 @@ namespace Gradient;
 public sealed partial class MainWindow
 {
     private sealed record ContentEntry(string path, string name, string file, string? version,
-        bool enabled, bool locked, bool synced, string kind);
+        bool enabled, bool locked, bool synced, string kind, bool has_update);
     private sealed record WorldEntry(string id, string name, string? last_played);
     private string? loadedTab;
 
@@ -84,6 +84,13 @@ public sealed partial class MainWindow
                 await ApplyProfileChange(new { method = "remove_content", id = profile.id, path = entry.path });
         });
         actions.Children.Add(toggle);
+        if (entry.has_update)
+        {
+            var update = new Button { Content = "Оновити" };
+            update.Click += async (_, _) => await MutateProfile(profile,
+                new { method = "update_content", id = profile.id, path = entry.path });
+            actions.Children.Add(update);
+        }
         actions.Children.Add(remove);
         row.Children.Add(actions);
         return row;

@@ -23,6 +23,38 @@ public sealed partial class MainWindow
         DefaultButton = ContentDialogButton.Primary
     };
 
+    public sealed record Group(string id, string name, bool selected);
+
+    private async void OpenProfileFolder(object sender, RoutedEventArgs e) => await Run(async () =>
+    {
+        if (SelectedProfile is not { } profile) return;
+        var path = await core.Call<string>(new { method = "profile_folder", id = profile.id });
+        var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path);
+        if (!await Windows.System.Launcher.LaunchFolderAsync(folder))
+            Status.Text = "Не вдалося відкрити папку профілю.";
+    });
+
+    private async void ProfileGroups(object sender, RoutedEventArgs e) => await Run(async () =>
+    {
+        if (SelectedProfile is not { } profile) return;
+        var groups = await core.Call<Group[]>(new { method = "groups", id = profile.id });
+        var form = new StackPanel { Spacing = 8 };
+        foreach (var group in groups)
+            form.Children.Add(new CheckBox { Content = group.name, Tag = group.id, IsChecked = group.selected });
+        var name = new TextBox { Header = "Нова група", PlaceholderText = "Назва групи" };
+        form.Children.Add(name);
+        var dialog = Editor("Групи профілю", new ScrollViewer { Content = form, MaxHeight = 380 }, "Зберегти");
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        var selected = form.Children.OfType<CheckBox>().Where(group => group.IsChecked == true)
+            .Select(group => (string)group.Tag).ToList();
+        if (!string.IsNullOrWhiteSpace(name.Text))
+        {
+            var group = await core.Call<Group>(new { method = "create_group", name = name.Text });
+            selected.Add(group.id);
+        }
+        await ApplyProfileChange(new { method = "set_groups", id = profile.id, groups = selected });
+    });
+
     private async void CreateProfile(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         var versions = await core.Call<string[]>(new { method = "game_versions" });

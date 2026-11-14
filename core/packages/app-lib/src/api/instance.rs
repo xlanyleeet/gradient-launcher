@@ -5,8 +5,9 @@ mod export_mrpack;
 mod files;
 pub use files::{
     InstanceFileItem, create_instance_directory, delete_instance_file,
-    list_instance_files, read_instance_file, rename_instance_file,
-    save_instance_file_as, validate_instance_file_write, write_instance_file,
+    list_instance_files, preview_instance_text, read_instance_file,
+    rename_instance_file, save_instance_file_as, validate_instance_file_write,
+    write_instance_file,
 };
 mod get;
 mod groups;
@@ -52,10 +53,11 @@ pub use self::lifecycle::{edit, remove, set_synced_option};
 pub use self::paths::{get_full_path, get_mod_full_path};
 pub use self::projects::{
     InstallProjectWithDependenciesRequest, add_project_from_path,
-    add_project_from_version, install_project_with_dependencies,
-    is_file_on_modrinth, remove_project, repair_managed_modrinth,
-    set_project_locked, switch_project_version_with_dependencies,
-    toggle_disable_project, update_managed_modrinth_version, update_project,
+    add_project_from_version, install_project_and_wait,
+    install_project_with_dependencies, is_file_on_modrinth, remove_project,
+    repair_managed_modrinth, set_project_locked,
+    switch_project_version_with_dependencies, toggle_disable_project,
+    update_managed_modrinth_version, update_project,
 };
 pub use self::run::{
     QuickPlayType, kill, run, try_update_playtime_by_instance_id,

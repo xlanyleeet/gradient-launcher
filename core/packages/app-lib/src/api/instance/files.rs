@@ -8,6 +8,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tokio::fs;
+use tokio::io::AsyncReadExt;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -165,6 +166,29 @@ pub async fn read_instance_file(
     let state = State::get().await?;
     let content = resolve(&state, instance_id, path, false).await?;
     Ok(fs::read(content.path()).await?)
+}
+
+pub async fn preview_instance_text(
+    instance_id: &str,
+    path: &str,
+) -> crate::Result<String> {
+    const LIMIT: u64 = 256 * 1024;
+    let state = State::get().await?;
+    let content = resolve(&state, instance_id, path, false).await?;
+    if !fs::metadata(content.path()).await?.is_file() {
+        return Err(input("Only regular files can be previewed"));
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(content.path())
+        .await?
+        .take(LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .await?;
+    if bytes.len() as u64 > LIMIT || bytes.contains(&0) {
+        return Err(input("Text preview is limited to 256 KiB"));
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| input("Only UTF-8 text can be previewed"))
 }
 
 pub async fn validate_instance_file_write(

@@ -5,12 +5,18 @@ import WebKit
 
 @main
 struct GradientApp: App {
+    @State private var core = CoreClient()
+
     var body: some Scene {
         Window("Gradient Launcher", id: "launcher") {
-            LauncherView()
+            LauncherView(core: core)
                 .frame(minWidth: 760, minHeight: 560)
         }
         .defaultSize(width: 1120, height: 740)
+
+        Settings {
+            LaunchSettingsView(core: core)
+        }
     }
 }
 
@@ -32,7 +38,7 @@ private struct Account: Decodable, Identifiable {
 }
 
 private enum LibrarySheet: String, Identifiable {
-    case create, rename, accounts
+    case create, rename, accounts, launch, groups
     var id: String { rawValue }
 }
 
@@ -50,10 +56,13 @@ private struct Job: Decodable, Identifiable {
 }
 
 private enum ProfileTab: String, CaseIterable {
-    case log = "Живий лог"
+    case log = "Логи"
     case queue = "Завантаження"
     case content = "Контент"
     case worlds = "Світи"
+    case screenshots = "Скриншоти"
+    case files = "Файли"
+    case servers = "Сервери"
 }
 
 private struct ContentEntry: Decodable, Identifiable {
@@ -65,6 +74,7 @@ private struct ContentEntry: Decodable, Identifiable {
     let enabled: Bool
     let locked: Bool
     let synced: Bool
+    let has_update: Bool
     var id: String { path }
 }
 
@@ -74,23 +84,50 @@ private struct WorldEntry: Decodable, Identifiable {
     let last_played: String?
 }
 
+private struct ArchivedLog: Decodable, Hashable {
+    let filename: String
+    let log_type: String
+
+    var label: String {
+        log_type == "CrashReport" ? "\(filename) · Звіт про збій" : filename
+    }
+}
+
+private struct Screenshot: Decodable, Identifiable {
+    let filename: String
+    let path: String
+    var id: String { filename }
+}
+
 private struct LauncherView: View {
-    @State private var core = CoreClient()
+    let core: CoreClient
     private let tint = Color(red: 0.66, green: 0.87, blue: 0.84)
     private let ink = Color(red: 0.07, green: 0.17, blue: 0.17)
 
     @State private var profiles: [Profile] = []
     @State private var jobs: [Job] = []
     @State private var selectedID: String?
+    @State private var showDiscover = false
+    @State private var pendingPack: URL?
+    @State private var transfer: ProfileTransferView.Operation?
+    @State private var fileRefresh = 0
     @State private var coverKey: String?
     @State private var cover: NSImage?
     @State private var log = ""
+    @State private var archivedLogs: [ArchivedLog] = []
+    @State private var selectedLog: ArchivedLog?
+    @State private var displayedLog: ArchivedLog?
+    @State private var logProfile: String?
+    @State private var logWasRunning = false
     @State private var status = ""
     @State private var busy = false
     @State private var tab = ProfileTab.log
     @State private var loadedTab: String?
     @State private var content: [ContentEntry] = []
     @State private var worlds: [WorldEntry] = []
+    @State private var screenshots: [Screenshot] = []
+    @State private var selectedScreenshot = ""
+    @State private var screenshotPreview: NSImage?
     @State private var pendingRemoval: (profileID: String, entry: ContentEntry)?
     @State private var search = ""
     @State private var showLogin = false
@@ -115,6 +152,10 @@ private struct LauncherView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedID) {
+                Section {
+                    Button("Каталог Modrinth", systemImage: "magnifyingglass") { showDiscover = true }
+                        .buttonStyle(.plain)
+                }
                 Section("Профілі") {
                     ForEach(filteredProfiles) { entry in
                         Label {
@@ -141,6 +182,14 @@ private struct LauncherView: View {
                     .padding(12)
             }
         } detail: {
+            if showDiscover {
+                DiscoverView(core: core, profileID: selectedID) {
+                    loadedTab = nil
+                }
+                .toolbar {
+                    Button("До бібліотеки", systemImage: "chevron.left") { showDiscover = false }
+                }
+            } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     hero
@@ -171,11 +220,15 @@ private struct LauncherView: View {
             .toolbar {
                 Button("Новий профіль", systemImage: "plus.square", action: beginCreateProfile)
                 Button("Імпортувати .mrpack", systemImage: "plus", action: importPack)
+                Button("Імпорт з лаунчера", systemImage: "folder.badge.plus") { transfer = .importLauncher }
                 Button("Оновити", systemImage: "arrow.clockwise") {
                     coverKey = nil
                     loadedTab = nil
+                    logProfile = nil
+                    fileRefresh += 1
                     Task { await perform(refresh) }
                 }
+            }
             }
         }
         .searchable(text: $search, prompt: "Пошук профілів")
@@ -185,12 +238,43 @@ private struct LauncherView: View {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }
+        .task {
+            if let argument = CommandLine.arguments.dropFirst().first(where: {
+                URL(fileURLWithPath: $0).pathExtension.lowercased() == "mrpack" &&
+                FileManager.default.fileExists(atPath: $0)
+            }) {
+                pendingPack = URL(fileURLWithPath: argument)
+            }
+        }
+        .onOpenURL { url in
+            if url.isFileURL && url.pathExtension.lowercased() == "mrpack" { pendingPack = url }
+        }
+        .confirmationDialog("Імпортувати модпак?", isPresented: Binding(
+            get: { pendingPack != nil },
+            set: { if !$0 { pendingPack = nil } }
+        ), presenting: pendingPack) { url in
+            Button("Імпортувати") {
+                Task {
+                    do {
+                        _ = try await core.call("import", ["path": url.path], as: EmptyReply.self)
+                        status = "Модпак додано до черги."
+                        await perform(refresh)
+                    } catch { status = error.localizedDescription }
+                }
+            }
+            Button("Скасувати", role: .cancel) {}
+        } message: { Text($0.lastPathComponent) }
         .onChange(of: selectedID) {
+            showDiscover = false
             Task { await perform(loadSelection) }
         }
         .onChange(of: tab) {
             Task { await perform(loadSelection) }
         }
+        .onChange(of: selectedLog) {
+            Task { await perform(loadSelection) }
+        }
+        .onChange(of: selectedScreenshot) { updateScreenshotPreview() }
         .confirmationDialog("Видалити контент?", isPresented: Binding(
             get: { pendingRemoval != nil },
             set: { if !$0 { pendingRemoval = nil } }
@@ -220,7 +304,18 @@ private struct LauncherView: View {
             }
         }
         .sheet(item: $librarySheet) { sheet in
-            libraryEditor(sheet)
+            if sheet == .launch, let editedProfile {
+                ProfileLaunchSettingsView(core: core, profileID: editedProfile.id) {
+                    status = "Налаштування профілю збережено."
+                }
+            } else if sheet == .groups, let editedProfile {
+                ProfileGroupsView(core: core, profileID: editedProfile.id)
+            } else {
+                libraryEditor(sheet)
+            }
+        }
+        .sheet(item: $transfer) { operation in
+            ProfileTransferView(core: core, operation: operation) { status = $0 }
         }
         .alert("Видалити профіль?", isPresented: Binding(
             get: { profileToRemove != nil },
@@ -243,9 +338,19 @@ private struct LauncherView: View {
             if jobs.isEmpty { Text("Черга порожня.") }
             ForEach(jobs) { job in jobRow(job) }
         case .log:
-            Text(log.isEmpty ? "Тут з’явиться вивід Minecraft." : log)
-                .font(.system(.callout, design: .monospaced))
-                .textSelection(.enabled)
+            if profile == nil {
+                Text("Виберіть профіль.")
+            } else {
+                Picker("Джерело логу", selection: $selectedLog) {
+                    Text("Живий лог").tag(nil as ArchivedLog?)
+                    ForEach(archivedLogs, id: \.self) { source in
+                        Text(source.label).tag(Optional(source))
+                    }
+                }
+                Text(log.isEmpty ? "Лог порожній." : log)
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
+            }
         case .content, .worlds:
             if let profile {
                 if tab == .content {
@@ -264,7 +369,67 @@ private struct LauncherView: View {
             } else {
                 Text("Виберіть профіль.")
             }
+        case .screenshots:
+            if let profile {
+                if loadedTab != tabKey(profile, tab) {
+                    ProgressView()
+                } else {
+                    screenshotGallery(profile)
+                }
+            } else {
+                Text("Виберіть профіль.")
+            }
+        case .files:
+            if let profile {
+                ProfileFilesView(core: core, profileID: profile.id, refresh: fileRefresh,
+                                 editableProfile: !profile.running && !profile.quarantined).id(profile.id)
+            } else {
+                Text("Виберіть профіль.")
+            }
+        case .servers:
+            if let profile {
+                ProfileServersView(core: core, profileID: profile.id,
+                                   canPlay: !profile.running && !profile.quarantined,
+                                   refresh: fileRefresh).id(profile.id)
+            } else {
+                Text("Виберіть профіль.")
+            }
         }
+    }
+
+    @ViewBuilder private func screenshotGallery(_ profile: Profile) -> some View {
+        if screenshots.isEmpty {
+            Text("Скриншотів ще немає.")
+        } else {
+            HStack {
+                Picker("Скриншот", selection: $selectedScreenshot) {
+                    ForEach(screenshots) { shot in Text(shot.filename).tag(shot.id) }
+                }
+                Button("Експортувати всі у ZIP", systemImage: "square.and.arrow.up") {
+                    let panel = NSSavePanel()
+                    panel.allowedContentTypes = [.zip]
+                    panel.nameFieldStringValue = "screenshots.zip"
+                    guard panel.runModal() == .OK, let url = panel.url else { return }
+                    mutate("export_screenshots", ["id": profile.id, "path": url.path],
+                           message: "Архів збережено.")
+                }
+                .disabled(busy)
+            }
+            if let screenshotPreview {
+                Image(nsImage: screenshotPreview)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 440)
+                    .accessibilityLabel(Text(selectedScreenshot))
+            } else {
+                Text("Файл скриншота недоступний.")
+            }
+        }
+    }
+
+    private func updateScreenshotPreview() {
+        let selected = screenshots.first { $0.id == selectedScreenshot }
+        screenshotPreview = selected.flatMap { NSImage(contentsOfFile: $0.path) }
     }
 
     private func contentRow(_ profile: Profile, _ entry: ContentEntry) -> some View {
@@ -283,6 +448,9 @@ private struct LauncherView: View {
                         ])
                     }
                     Button("Видалити") { pendingRemoval = (profile.id, entry) }
+                    if entry.has_update {
+                        Button("Оновити") { mutate("update_content", ["id": profile.id, "path": entry.path]) }
+                    }
                 }
                 .disabled(busy)
             }
@@ -320,7 +488,7 @@ private struct LauncherView: View {
     private var hero: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomLeading) {
-                if let artwork = cover ?? Bundle.module.url(forResource: "Cover", withExtension: "png").flatMap(NSImage.init(contentsOf:)) {
+                if let artwork = cover ?? bundledCover {
                     Image(nsImage: artwork)
                         .resizable()
                         .scaledToFill()
@@ -360,6 +528,12 @@ private struct LauncherView: View {
         .frame(height: 350)
     }
 
+    private var bundledCover: NSImage? {
+        let url = Bundle.main.url(forResource: "Cover", withExtension: "png")
+            ?? Bundle.module.url(forResource: "Cover", withExtension: "png")
+        return url.flatMap(NSImage.init(contentsOf:))
+    }
+
     private func profileMenu(_ profile: Profile) -> some View {
         Menu("Дії профілю") {
             Button("Перейменувати") {
@@ -374,10 +548,31 @@ private struct LauncherView: View {
                     mutate("profile_icon", ["id": profile.id, "path": url.path])
                 }
             }
+            Button("Java та пам’ять") {
+                editedProfile = profile
+                librarySheet = .launch
+            }
+            .disabled(profile.running)
+            Button("Групи профілю") {
+                editedProfile = profile
+                librarySheet = .groups
+            }
             Button("Дублювати") {
                 mutate("duplicate_profile", ["id": profile.id], message: "Дублювання додано до черги.")
             }
             .disabled(profile.running)
+            Button("Експортувати .mrpack") { transfer = .export(profile.id) }
+                .disabled(profile.running)
+            Button("Відкрити папку профілю") {
+                Task {
+                    await perform {
+                        let path = try await core.call("profile_folder", ["id": profile.id], as: String.self)
+                        if !NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true)) {
+                            status = "Не вдалося відкрити папку профілю."
+                        }
+                    }
+                }
+            }
             Divider()
             Button("Видалити профіль", role: .destructive) { profileToRemove = profile }
                 .disabled(profile.running)
@@ -517,6 +712,9 @@ private struct LauncherView: View {
             cover = nil
             coverKey = nil
             log = ""
+            logProfile = nil
+            archivedLogs = []
+            selectedLog = nil
             loadedTab = nil
             return
         }
@@ -540,11 +738,46 @@ private struct LauncherView: View {
             guard selectedID == profile.id, tab == requestedTab else { return }
             worlds = entries
             loadedTab = key
+        case .screenshots where key != loadedTab:
+            let entries = try await core.call("screenshots", ["id": profile.id], as: [Screenshot].self)
+            guard selectedID == profile.id, tab == requestedTab else { return }
+            screenshots = entries
+            selectedScreenshot = entries.first?.id ?? ""
+            updateScreenshotPreview()
+            loadedTab = key
         case .log:
-            let next = try await core.call("log", ["id": profile.id], as: String.self)
-            if selectedID == profile.id { log = next }
+            try await loadLog(profile)
         default:
             break
+        }
+    }
+
+    @MainActor private func loadLog(_ profile: Profile) async throws {
+        if logProfile != profile.id || logWasRunning != profile.running {
+            let previous = logProfile == profile.id ? selectedLog : nil
+            log = ""
+            let entries = try await core.call("log_history", ["id": profile.id], as: [ArchivedLog].self)
+            guard selectedID == profile.id, tab == .log else { return }
+            archivedLogs = entries
+            selectedLog = previous.flatMap { entries.contains($0) ? $0 : nil }
+            displayedLog = nil
+            logProfile = profile.id
+            logWasRunning = profile.running
+        }
+
+        let source = selectedLog
+        let output: String
+        if let source {
+            if source == displayedLog { return }
+            output = try await core.call("read_log", [
+                "id": profile.id, "kind": source.log_type, "filename": source.filename
+            ], as: String.self)
+        } else {
+            output = try await core.call("log", ["id": profile.id], as: String.self)
+        }
+        if selectedID == profile.id, selectedLog == source {
+            log = output
+            displayedLog = source
         }
     }
 

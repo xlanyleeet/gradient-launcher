@@ -7,8 +7,10 @@
             <StackPanel Padding="18,26,18,12" Spacing="12">
                 <TextBlock Text="Gradient" FontSize="25" FontWeight="Bold"/>
                 <TextBox x:Name="Search" PlaceholderText="Пошук профілів" TextChanged="SearchChanged"/>
+                <Button Content="Каталог Modrinth" Click="OpenDiscover"/>
                 <Button Content="+  Новий профіль" Click="CreateProfile"/>
                 <Button Content="+  Імпортувати .mrpack" Click="Import"/>
+                <Button Content="Імпорт з лаунчера" Click="ImportLauncher"/>
             </StackPanel>
             <ListView x:Name="Profiles" Grid.Row="1" Margin="8,0" SelectionChanged="Select">
                 <ListView.ItemTemplate>
@@ -24,9 +26,10 @@
                 <Button Content="Акаунти" Click="ManageAccounts"/>
                 <Button Content="Увійти в Microsoft" Click="MicrosoftLogin"/>
                 <Button Content="Офлайн-акаунт" Click="Login"/>
+                <Button Content="Налаштування" Click="OpenSettings"/>
             </StackPanel>
         </Grid>
-        <ScrollViewer Grid.Column="1">
+        <ScrollViewer x:Name="LibraryPage" Grid.Column="1">
             <StackPanel>
                 <Grid Height="350">
                     <Image x:Name="Cover" Stretch="UniformToFill" Source="ms-appx:///Assets/Cover.png"/>
@@ -49,7 +52,11 @@
                                     <MenuFlyout>
                                         <MenuFlyoutItem Text="Перейменувати" Click="RenameProfile"/>
                                         <MenuFlyoutItem Text="Змінити іконку" Click="ChangeProfileIcon"/>
+                                        <MenuFlyoutItem Text="Java та пам’ять" Click="EditProfileLaunchSettings"/>
+                                        <MenuFlyoutItem Text="Групи профілю" Click="ProfileGroups"/>
                                         <MenuFlyoutItem Text="Дублювати" Click="DuplicateProfile"/>
+                                        <MenuFlyoutItem Text="Експортувати .mrpack" Click="ExportProfile"/>
+                                        <MenuFlyoutItem Text="Відкрити папку профілю" Click="OpenProfileFolder"/>
                                         <MenuFlyoutSeparator/>
                                         <MenuFlyoutItem Text="Видалити профіль" Click="RemoveProfile"/>
                                     </MenuFlyout>
@@ -64,8 +71,13 @@
                     </Border>
                     <TextBlock x:Name="Status" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                     <Pivot x:Name="Details" SelectionChanged="DetailChanged">
-                        <PivotItem x:Name="LogTab" Header="Живий лог">
-                            <TextBlock x:Name="GameLog" Text="Виберіть профіль." FontFamily="Consolas" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                        <PivotItem x:Name="LogTab" Header="Логи">
+                            <StackPanel Spacing="12">
+                                <ComboBox x:Name="LogPicker" Header="Джерело логу" DisplayMemberPath="Label"
+                                          SelectionChanged="LogChanged" IsEnabled="False" MaxWidth="380"/>
+                                <TextBlock x:Name="GameLog" Text="Виберіть профіль." FontFamily="Consolas"
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                            </StackPanel>
                         </PivotItem>
                         <PivotItem Header="Завантаження">
                             <StackPanel x:Name="Jobs" Spacing="8"/>
@@ -79,9 +91,87 @@
                         <PivotItem x:Name="WorldsTab" Header="Світи">
                             <StackPanel x:Name="WorldRows" Spacing="8"/>
                         </PivotItem>
+                        <PivotItem x:Name="ScreenshotsTab" Header="Скриншоти">
+                            <StackPanel Spacing="12">
+                                <Button x:Name="ExportShotsButton" Content="Експортувати всі у ZIP"
+                                        IsEnabled="False" Click="ExportScreenshots"/>
+                                <ComboBox x:Name="ScreenshotPicker" Header="Скриншот" DisplayMemberPath="filename"
+                                          IsEnabled="False" SelectionChanged="ScreenshotChanged"/>
+                                <TextBlock x:Name="ScreenshotStatus" Text="Виберіть профіль." TextWrapping="Wrap"/>
+                                <Image x:Name="ScreenshotPreview" MaxHeight="440" Stretch="Uniform"
+                                       HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </PivotItem>
+                        <PivotItem x:Name="FilesTab" Header="Файли">
+                            <StackPanel Spacing="8">
+                                <Button x:Name="ParentDirectoryButton" Content="На рівень вище" Click="ParentDirectory" IsEnabled="False"/>
+                                <TextBlock x:Name="DirectoryLabel" Text="Файли профілю" TextWrapping="Wrap"/>
+                                <ListView x:Name="FileList" MaxHeight="380" DisplayMemberPath="Label"
+                                          IsItemClickEnabled="True" SelectionMode="None" ItemClick="OpenFileEntry"/>
+                            </StackPanel>
+                        </PivotItem>
+                        <PivotItem x:Name="ServersTab" Header="Сервери">
+                            <StackPanel Spacing="8">
+                                <Button x:Name="AddServerButton" Content="Додати сервер" Click="AddServer" IsEnabled="False"/>
+                                <StackPanel x:Name="ServerRows" Spacing="10"/>
+                            </StackPanel>
+                        </PivotItem>
                     </Pivot>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
+        <ScrollViewer x:Name="SettingsPage" Grid.Column="1" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <StackPanel Padding="30" Spacing="16" HorizontalAlignment="Left" MaxWidth="680">
+                <Button Content="До бібліотеки" Click="CloseSettings"/>
+                <TextBlock Text="Налаштування запуску" Style="{StaticResource TitleTextBlockStyle}"/>
+                <TextBox x:Name="MemorySetting" Header="Максимум пам’яті (МіБ)" InputScope="Number"/>
+                <ToggleSwitch x:Name="FullscreenSetting" Header="На весь екран"/>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBox x:Name="WidthSetting" Header="Ширина (пкс)" InputScope="Number" MinWidth="140"/>
+                    <TextBox x:Name="HeightSetting" Header="Висота (пкс)" InputScope="Number" MinWidth="140"/>
+                </StackPanel>
+                <TextBox x:Name="ArgumentsSetting" Header="Аргументи JVM · один на рядок" AcceptsReturn="True"
+                         FontFamily="Consolas" TextWrapping="Wrap" MinHeight="96"/>
+                <Button x:Name="SaveSettingsButton" Content="Зберегти" Click="SaveSettings"/>
+                <TextBlock x:Name="SettingsStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+        </ScrollViewer>
+        <Grid x:Name="DiscoverPage" Grid.Column="1" Visibility="Collapsed" Padding="24"
+              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Spacing="8">
+                <Button Content="До бібліотеки" Click="CloseDiscover"/>
+                <TextBlock Text="Каталог Modrinth" Style="{StaticResource TitleTextBlockStyle}"/>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Spacing="8">
+                <ComboBox x:Name="DiscoverKind" Header="Тип контенту" SelectedIndex="0">
+                    <ComboBoxItem Content="Модпаки" Tag="modpack"/>
+                    <ComboBoxItem Content="Моди для вибраного профілю" Tag="mod"/>
+                </ComboBox>
+                <AutoSuggestBox x:Name="DiscoverQuery" PlaceholderText="Знайти на Modrinth" QueryIcon="Find"
+                                QuerySubmitted="DiscoverSearch"/>
+            </StackPanel>
+            <ListView x:Name="DiscoverResults" Grid.Row="2" IsItemClickEnabled="True"
+                      SelectionMode="None" ItemClick="SelectDiscoverResult">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,6" Spacing="3">
+                            <TextBlock Text="{Binding name}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding author}"/>
+                            <TextBlock Text="{Binding description}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+            <StackPanel Grid.Row="3" Spacing="8">
+                <Button x:Name="DiscoverMore" Content="Наступна сторінка" IsEnabled="False" Click="DiscoverNext"/>
+                <TextBlock x:Name="DiscoverStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

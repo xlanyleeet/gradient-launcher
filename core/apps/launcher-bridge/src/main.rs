@@ -9,12 +9,83 @@ use theseus::{
     EventState, State, install, instance, logs, minecraft_auth, process, worlds,
 };
 
+mod discover;
+
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 #[derive(Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Library,
+    ProfileFolder {
+        id: String,
+    },
+    Groups {
+        id: String,
+    },
+    CreateGroup {
+        name: String,
+    },
+    SetGroups {
+        id: String,
+        groups: Vec<String>,
+    },
+    ExportCandidates {
+        id: String,
+    },
+    ExportProfile {
+        id: String,
+        path: PathBuf,
+        included: Vec<String>,
+    },
+    ImportSources {
+        launcher: theseus::pack::import::ImportLauncherType,
+        base: PathBuf,
+    },
+    ImportProfile {
+        launcher: theseus::pack::import::ImportLauncherType,
+        base: PathBuf,
+        folder: String,
+    },
+    UpdateContent {
+        id: String,
+        path: String,
+    },
+    Files {
+        id: String,
+        path: String,
+    },
+    PreviewFile {
+        id: String,
+        path: String,
+    },
+    CopyFile {
+        id: String,
+        path: String,
+        destination: PathBuf,
+    },
+    SaveProfileText {
+        id: String,
+        path: String,
+        before: String,
+        text: String,
+    },
+    Discover {
+        #[serde(flatten)]
+        request: discover::Request,
+    },
+    LaunchSettings,
+    ProfileLaunchSettings {
+        id: String,
+    },
+    SaveProfileLaunchSettings {
+        id: String,
+        memory: String,
+        java: String,
+    },
+    SaveLaunchSettings {
+        values: LaunchSettings,
+    },
     GameVersions,
     CreateProfile {
         name: String,
@@ -45,6 +116,13 @@ enum Request {
     Cover {
         id: String,
     },
+    Screenshots {
+        id: String,
+    },
+    ExportScreenshots {
+        id: String,
+        path: PathBuf,
+    },
     Play {
         id: String,
     },
@@ -53,6 +131,14 @@ enum Request {
     },
     Log {
         id: String,
+    },
+    LogHistory {
+        id: String,
+    },
+    ReadLog {
+        id: String,
+        kind: logs::LogType,
+        filename: String,
     },
     Content {
         id: String,
@@ -72,6 +158,23 @@ enum Request {
     },
     Worlds {
         id: String,
+    },
+    Servers {
+        id: String,
+    },
+    SaveServer {
+        id: String,
+        server: Option<String>,
+        name: String,
+        address: String,
+    },
+    RemoveServer {
+        id: String,
+        server: String,
+    },
+    JoinServer {
+        id: String,
+        server: String,
     },
     OpenWorld {
         id: String,
@@ -99,6 +202,15 @@ enum Request {
     CancelLogin,
 }
 
+#[derive(serde::Serialize, Deserialize)]
+struct LaunchSettings {
+    memory_mib: u32,
+    fullscreen: bool,
+    width: u16,
+    height: u16,
+    arguments: Vec<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum JobAction {
@@ -124,6 +236,37 @@ async fn require_stopped(id: &str) -> Result<()> {
     Ok(())
 }
 
+async fn find_server(
+    id: &str,
+    server: &str,
+    write: bool,
+) -> Result<(usize, String, worlds::ServerPackStatus)> {
+    for world in worlds::get_instance_worlds(id).await? {
+        if let worlds::WorldDetails::Server {
+            index,
+            server_id,
+            source,
+            address,
+            pack_status,
+            ..
+        } = world.details
+            && server_id == server
+        {
+            if write
+                && !matches!(
+                    source,
+                    instance::ServerSource::UserSynced
+                        | instance::ServerSource::LocalDesynced
+                )
+            {
+                return Err("Сервером керує модпак або проєкт.".into());
+            }
+            return Ok((index, address, pack_status));
+        }
+    }
+    Err("Сервер не знайдено.".into())
+}
+
 async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
     if !matches!(
         Path::new(world).components().collect::<Vec<_>>().as_slice(),
@@ -136,6 +279,113 @@ async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
 
 async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     Ok(match request {
+        Request::ProfileFolder { id } => json!(instance::get_full_path(&id).await?),
+        Request::Groups { id } => {
+            let profile = instance::get(&id).await?.ok_or("Профіль не знайдено.")?;
+            json!(instance::list_groups().await?.into_iter().map(|group| {
+                json!({ "id": group.id, "name": group.name, "selected": profile.group_ids.contains(&group.id) })
+            }).collect::<Vec<_>>())
+        }
+        Request::CreateGroup { name } => json!(instance::create_group(name).await?),
+        Request::SetGroups { id, groups } => {
+            instance::set_group_memberships(vec![instance::InstanceGroupMembershipUpdate { instance_id: id, group_ids: groups }]).await?;
+            Value::Null
+        }
+        Request::ExportCandidates { id } => json!(instance::get_pack_export_candidates(&id).await?),
+        Request::ExportProfile { id, path, included } => {
+            require_stopped(&id).await?;
+            instance::export_mrpack(&id, path, included, Vec::new(), None, None, None).await?;
+            Value::Null
+        }
+        Request::ImportSources { launcher, base } => {
+            let mut folders = theseus::pack::import::get_importable_instances(launcher, base).await?;
+            folders.sort_by_cached_key(|folder| folder.to_lowercase());
+            json!(folders)
+        }
+        Request::ImportProfile { launcher, base, folder } => {
+            let folders = theseus::pack::import::get_importable_instances(launcher, base.clone()).await?;
+            if !folders.contains(&folder) { return Err("Профіль для імпорту не знайдено.".into()); }
+            install::import_instance(launcher, base, folder).await?;
+            Value::Null
+        }
+        Request::UpdateContent { id, path } => {
+            require_stopped(&id).await?;
+            instance::update_project(&id, &path, None).await?;
+            Value::Null
+        }
+        Request::Files { id, path } => {
+            let mut entries = instance::list_instance_files(&id, &path).await?;
+            entries.sort_by_cached_key(|entry| (entry.kind != "directory", entry.name.to_lowercase()));
+            json!(entries)
+        }
+        Request::PreviewFile { id, path } => json!(instance::preview_instance_text(&id, &path).await?),
+        Request::CopyFile { id, path, destination } => {
+            instance::save_instance_file_as(&id, &path, &destination).await?;
+            Value::Null
+        }
+        Request::SaveProfileText { id, path, before, text } => {
+            require_stopped(&id).await?;
+            if text.len() > 256 * 1024 || text.contains('\0') {
+                return Err("Редактор підтримує текстові файли до 256 КіБ.".into());
+            }
+            if instance::preview_instance_text(&id, &path).await? != before {
+                return Err("Файл змінився на диску. Відкрийте його знову перед збереженням.".into());
+            }
+            instance::write_instance_file(&id, &path, text.as_bytes(), false).await?;
+            Value::Null
+        }
+        Request::Discover { request } => discover::handle(request).await?,
+        Request::LaunchSettings => {
+            let settings = theseus::settings::get().await?;
+            json!(LaunchSettings {
+                memory_mib: settings.memory.maximum,
+                fullscreen: settings.force_fullscreen,
+                width: settings.game_resolution.0,
+                height: settings.game_resolution.1,
+                arguments: settings.extra_launch_args,
+            })
+        }
+        Request::ProfileLaunchSettings { id } => {
+            let profile = instance::get(&id).await?.ok_or("Профіль не знайдено.")?;
+            let values = profile.launch_overrides;
+            json!({ "memory": values.memory.map(|value| value.maximum.to_string()), "java": values.java_path })
+        }
+        Request::SaveProfileLaunchSettings { id, memory, java } => {
+            require_stopped(&id).await?;
+            let memory = match memory.trim() {
+                "" => None,
+                value => {
+                    let maximum: u32 = value.parse()?;
+                    if maximum == 0 { return Err("Вкажіть додатній обсяг пам’яті.".into()); }
+                    Some(theseus::data::MemorySettings { maximum })
+                }
+            };
+            let java = match java.trim() {
+                "" => None,
+                value => {
+                    theseus::jre::check_jre(PathBuf::from(value)).await?;
+                    Some(value.to_owned())
+                }
+            };
+            instance::edit(&id, theseus::data::EditInstance {
+                launch_overrides: Some(theseus::data::InstanceLaunchOverridesPatch {
+                    memory: Some(memory), java_path: Some(java), ..Default::default()
+                }), ..Default::default()
+            }).await?;
+            Value::Null
+        }
+        Request::SaveLaunchSettings { values } => {
+            if values.memory_mib == 0 || values.width == 0 || values.height == 0 {
+                return Err("Пам’ять і роздільна здатність мають бути більшими за нуль.".into());
+            }
+            let mut settings = theseus::settings::get().await?;
+            settings.memory.maximum = values.memory_mib;
+            settings.force_fullscreen = values.fullscreen;
+            settings.game_resolution = theseus::data::WindowSize(values.width, values.height);
+            settings.extra_launch_args = values.arguments;
+            theseus::settings::set(settings).await?;
+            Value::Null
+        }
         Request::GameVersions => {
             let manifest = theseus::metadata::get_minecraft_versions().await?;
             json!(manifest.versions.into_iter()
@@ -213,6 +463,23 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 .max_by_key(|shot| shot.modified_at)
                 .map(|shot| shot.path)
         ),
+        Request::Screenshots { id } => {
+            let mut screenshots = instance::list_screenshots(&id).await?;
+            screenshots.sort_by_key(|shot| std::cmp::Reverse(shot.modified_at));
+            json!(screenshots.into_iter().map(|shot| json!({
+                "filename": shot.file_name,
+                "path": shot.path,
+            })).collect::<Vec<_>>())
+        }
+        Request::ExportScreenshots { id, path } => {
+            let keys: Vec<_> = instance::list_screenshots(&id).await?.into_iter()
+                .map(|shot| instance::ScreenshotKey {
+                    instance_id: id.clone(),
+                    file_name: shot.file_name,
+                }).collect();
+            instance::export_screenshots(&keys, path).await?;
+            Value::Null
+        }
         Request::Play { id } => {
             if !process::get_by_instance_id(&id).await?.is_empty() {
                 return Err(
@@ -227,6 +494,14 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             Value::Null
         }
         Request::Log { id } => json!(logs::get_live_log_buffer(&id).await?),
+        Request::LogHistory { id } => json!(logs::get_logs(&id, Some(true)).await?),
+        Request::ReadLog { id, kind, filename } => {
+            let path = Path::new(&filename);
+            if path.file_name() != Some(path.as_os_str()) || filename.contains(['/', '\\']) {
+                return Err("Неприпустима назва файлу логу.".into());
+            }
+            json!(logs::get_output_by_filename(&id, kind, &filename).await?)
+        }
         Request::Content { id } => {
             instance::sync_content_files(&id).await?;
             let mut items = instance::get_content_items(&id, None).await?;
@@ -244,6 +519,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                     "version": version,
                     "enabled": item.enabled,
                     "locked": item.locked,
+                    "has_update": item.has_update,
                     "synced": item.synced_pack.is_some(),
                     "kind": item.project_type,
                 })
@@ -277,6 +553,41 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 }))
                 .collect::<Vec<_>>()
         ),
+        Request::Servers { id } => json!(worlds::get_instance_worlds(&id).await?
+            .into_iter().filter_map(|world| {
+                let worlds::WorldDetails::Server { server_id, address, source, .. } = world.details else { return None; };
+                Some(json!({
+                    "id": server_id, "name": world.name, "address": address,
+                    "editable": matches!(source, instance::ServerSource::UserSynced | instance::ServerSource::LocalDesynced),
+                }))
+            }).collect::<Vec<_>>()),
+        Request::SaveServer { id, server, name, address } => {
+            require_stopped(&id).await?;
+            let (name, address) = (name.trim().to_owned(), address.trim().to_owned());
+            if name.is_empty() { return Err("Введіть назву сервера.".into()); }
+            theseus::server_address::parse_server_address(&address)?;
+            if let Some(server) = server {
+                let (index, _, status) = find_server(&id, &server, true).await?;
+                worlds::edit_server_in_instance(&id, index, name, address, status).await?;
+            } else {
+                worlds::add_server_to_instance(&id, name, address, worlds::ServerPackStatus::Prompt, None, None).await?;
+            }
+            Value::Null
+        }
+        Request::RemoveServer { id, server } => {
+            require_stopped(&id).await?;
+            let (index, _, _) = find_server(&id, &server, true).await?;
+            worlds::remove_server_from_instance(&id, index).await?;
+            Value::Null
+        }
+        Request::JoinServer { id, server } => {
+            require_stopped(&id).await?;
+            let (_, address, _) = find_server(&id, &server, false).await?;
+            Box::pin(instance::run(&id, instance::QuickPlayType::Server(
+                theseus::server_address::ServerAddress::Unresolved(address)
+            ))).await?;
+            Value::Null
+        }
         Request::OpenWorld { id, world } => {
             require_stopped(&id).await?;
             let world = local_world(&id, &world).await?;

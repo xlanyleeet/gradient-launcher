@@ -81,6 +81,21 @@ pub async fn install_project_with_dependencies(
     instance_id: &str,
     request: InstallProjectWithDependenciesRequest,
 ) -> crate::Result<ResolveContentPlan> {
+    install_project(instance_id, request, false).await
+}
+
+pub async fn install_project_and_wait(
+    instance_id: &str,
+    request: InstallProjectWithDependenciesRequest,
+) -> crate::Result<ResolveContentPlan> {
+    install_project(instance_id, request, true).await
+}
+
+async fn install_project(
+    instance_id: &str,
+    request: InstallProjectWithDependenciesRequest,
+    wait: bool,
+) -> crate::Result<ResolveContentPlan> {
     let state = State::get().await?;
     let metadata = super::get::get(instance_id).await?.ok_or_else(|| {
         crate::ErrorKind::InputError("Unknown instance".to_string())
@@ -101,7 +116,7 @@ pub async fn install_project_with_dependencies(
     let instance_id = metadata.instance.id;
     let project_ids = plan_project_ids(&plan);
     let install_plan = plan.clone();
-    tokio::spawn(async move {
+    let operation = async move {
         let result = async {
 			let paths = crate::state::instances::commands::install_resolved_content_plan(
 				&instance_id,
@@ -113,7 +128,7 @@ pub async fn install_project_with_dependencies(
 			}
 			Ok::<(), crate::Error>(())
 		}.await;
-        match result {
+        match &result {
             Ok(()) => {
                 if let Err(error) = emit_instance(
                     &instance_id,
@@ -152,7 +167,15 @@ pub async fn install_project_with_dependencies(
                 }
             }
         }
-    });
+        result
+    };
+    if wait {
+        operation.await?;
+    } else {
+        tokio::spawn(async move {
+            let _ = operation.await;
+        });
+    }
 
     Ok(plan)
 }

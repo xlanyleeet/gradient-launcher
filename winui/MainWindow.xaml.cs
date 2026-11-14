@@ -46,6 +46,16 @@ public sealed partial class MainWindow : Window
     {
         Layout.Loaded -= Start;
         await Run(Update);
+        var importPath = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(arg =>
+            Path.GetExtension(arg).Equals(".mrpack", StringComparison.OrdinalIgnoreCase) && File.Exists(arg));
+        if (importPath is not null)
+            await Run(async () =>
+            {
+                var dialog = Editor("Імпортувати модпак?", Path.GetFileName(importPath), "Імпортувати");
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                    await ApplyProfileChange(new { method = "import", path = Path.GetFullPath(importPath) },
+                        "Модпак додано до черги.");
+            });
         if (!closed) timer.Start();
     }
 
@@ -105,6 +115,15 @@ public sealed partial class MainWindow : Window
             Cover.Source = new BitmapImage(new Uri("ms-appx:///Assets/Cover.png"));
             coverId = null;
             GameLog.Text = "Виберіть профіль.";
+            LogPicker.IsEnabled = false;
+            logProfileId = null;
+            ClearScreenshots("Виберіть профіль.");
+            FileList.ItemsSource = null;
+            ParentDirectoryButton.IsEnabled = false;
+            fileProfile = null;
+            ServerRows.Children.Clear();
+            AddServerButton.IsEnabled = false;
+            serverViewKey = null;
             ContentRows.Children.Clear();
             WorldRows.Children.Clear();
             AddModButton.IsEnabled = false;
@@ -126,10 +145,23 @@ public sealed partial class MainWindow : Window
             await LoadProfileTab(selected);
             return;
         }
+        if (Equals(Details.SelectedItem, ScreenshotsTab))
+        {
+            await LoadScreenshots(selected);
+            return;
+        }
+        if (Equals(Details.SelectedItem, FilesTab))
+        {
+            if (fileProfile != selected.id) await LoadDirectory(selected, "");
+            return;
+        }
+        if (Equals(Details.SelectedItem, ServersTab))
+        {
+            await LoadServers(selected);
+            return;
+        }
         if (!Equals(Details.SelectedItem, LogTab)) return;
-        var log = await core.Call<string>(new { method = "log", id = selected.id });
-        if (SelectedProfile?.id == selected.id)
-            GameLog.Text = string.IsNullOrWhiteSpace(log) ? "Тут з’явиться вивід Minecraft." : log;
+        await LoadLog(selected);
     }
 
     private void DrawJobs()
@@ -169,6 +201,11 @@ public sealed partial class MainWindow : Window
     {
         coverId = null;
         loadedTab = null;
+        logProfileId = null;
+        screenshotProfile = null;
+        serverViewKey = null;
+        if (SelectedProfile is { } selected && Equals(Details.SelectedItem, FilesTab))
+            await LoadDirectory(selected, fileProfile == selected.id ? directoryPath : "");
         await Update();
     });
 

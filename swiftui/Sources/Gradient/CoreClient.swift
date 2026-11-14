@@ -7,11 +7,14 @@ actor CoreClient {
     private var buffer = Data()
 
     func call<T: Decodable>(_ method: String, _ values: [String: String] = [:], as _: T.Type) throws -> T {
+        let request = values.merging(["method": method]) { _, method in method }
+        return try send(request, as: T.self)
+    }
+
+    func send<T: Decodable, Request: Encodable>(_ request: Request, as _: T.Type) throws -> T {
         if process?.isRunning != true {
             try connect()
         }
-
-        let request = values.merging(["method": method]) { _, method in method }
         var line = try JSONEncoder().encode(request)
         line.append(10)
         guard let input else { throw CoreError("Канал ядра закрито.") }
@@ -21,7 +24,8 @@ actor CoreClient {
 
     private func connect() throws {
         let environment = ProcessInfo.processInfo.environment
-        let embedded = Bundle.main.url(forAuxiliaryExecutable: "gradient-core")
+        let embedded = Bundle.main.executableURL?.deletingLastPathComponent()
+            .appendingPathComponent("gradient-core")
         let executable = environment["GRADIENT_CORE"].map { URL(fileURLWithPath: $0) } ?? embedded
         guard let executable else { throw CoreError("Вкажіть шлях до ядра в GRADIENT_CORE.") }
 

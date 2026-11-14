@@ -88,10 +88,13 @@ jobs:
             fi
           done
           stage="$RUNNER_TEMP/gradient-native-macos"
-          mkdir -p "$stage"
-          cp "$output/Gradient" core/target/release/gradient-core "$stage/"
-          cp -R "$output/Gradient_Gradient.bundle" "$stage/"
-          tar -czf "gradient-native-macos-$MACOS_ARCH.tar.gz" -C "$stage" .
+          app="$stage/Gradient Launcher.app"
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          cp swiftui/Info.plist "$app/Contents/Info.plist"
+          plutil -lint "$app/Contents/Info.plist"
+          cp "$output/Gradient" core/target/release/gradient-core "$app/Contents/MacOS/"
+          cp swiftui/Sources/Gradient/Resources/Cover.png "$app/Contents/Resources/"
+          tar -czf "gradient-native-macos-$MACOS_ARCH.tar.gz" -C "$stage" "Gradient Launcher.app"
       - uses: actions/upload-artifact@v4
         with:
           name: gradient-native-macos-${{ matrix.arch }}
