@@ -22,10 +22,12 @@ public sealed partial class MainWindow : Window
     private string? coverId;
     private bool busy;
     private bool closed;
+    private bool ready;
 
     public MainWindow()
     {
         InitializeComponent();
+        ready = true;
         AppWindow.Resize(new SizeInt32(1160, 770));
         timer.Tick += async (_, _) => await Run(Update);
         Closed += (_, _) =>
@@ -98,6 +100,9 @@ public sealed partial class MainWindow : Window
             Cover.Source = new BitmapImage(new Uri("ms-appx:///Assets/Cover.png"));
             coverId = null;
             GameLog.Text = "Виберіть профіль.";
+            ContentRows.Children.Clear();
+            WorldRows.Children.Clear();
+            AddModButton.IsEnabled = false;
             return;
         }
 
@@ -111,6 +116,12 @@ public sealed partial class MainWindow : Window
             coverId = nextCoverId;
         }
 
+        if (Equals(Details.SelectedItem, ContentTab) || Equals(Details.SelectedItem, WorldsTab))
+        {
+            await LoadProfileTab(selected);
+            return;
+        }
+        if (!Equals(Details.SelectedItem, LogTab)) return;
         var log = await core.Call<string>(new { method = "log", id = selected.id });
         if (SelectedProfile?.id == selected.id)
             GameLog.Text = string.IsNullOrWhiteSpace(log) ? "Тут з’явиться вивід Minecraft." : log;
@@ -149,7 +160,12 @@ public sealed partial class MainWindow : Window
     }
 
     private async void Select(object sender, SelectionChangedEventArgs e) => await Run(LoadSelected);
-    private async void Refresh(object sender, RoutedEventArgs e) => await Run(async () => { coverId = null; await Update(); });
+    private async void Refresh(object sender, RoutedEventArgs e) => await Run(async () =>
+    {
+        coverId = null;
+        loadedTab = null;
+        await Update();
+    });
 
     private async void Play(object sender, RoutedEventArgs e)
     {

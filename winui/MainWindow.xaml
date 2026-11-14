@@ -41,12 +41,21 @@
                         <TextBlock x:Name="Metadata" Text="Виберіть профіль або імпортуйте модпак." TextWrapping="Wrap"/>
                     </Border>
                     <TextBlock x:Name="Status" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                    <Pivot>
-                        <PivotItem Header="Живий лог">
+                    <Pivot x:Name="Details" SelectionChanged="DetailChanged">
+                        <PivotItem x:Name="LogTab" Header="Живий лог">
                             <TextBlock x:Name="GameLog" Text="Виберіть профіль." FontFamily="Consolas" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                         </PivotItem>
                         <PivotItem Header="Завантаження">
                             <StackPanel x:Name="Jobs" Spacing="8"/>
+                        </PivotItem>
+                        <PivotItem x:Name="ContentTab" Header="Контент">
+                            <StackPanel Spacing="8">
+                                <Button x:Name="AddModButton" Content="+  Додати .jar" Click="AddMod" IsEnabled="False"/>
+                                <StackPanel x:Name="ContentRows" Spacing="8"/>
+                            </StackPanel>
+                        </PivotItem>
+                        <PivotItem x:Name="WorldsTab" Header="Світи">
+                            <StackPanel x:Name="WorldRows" Spacing="8"/>
                         </PivotItem>
                     </Pivot>
                 </StackPanel>

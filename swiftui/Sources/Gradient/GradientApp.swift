@@ -37,6 +37,31 @@ private struct Job: Decodable, Identifiable {
     var id: String { job_id }
 }
 
+private enum ProfileTab: String, CaseIterable {
+    case log = "Живий лог"
+    case queue = "Завантаження"
+    case content = "Контент"
+    case worlds = "Світи"
+}
+
+private struct ContentEntry: Decodable, Identifiable {
+    let path: String
+    let name: String
+    let file: String
+    let version: String?
+    let kind: String
+    let enabled: Bool
+    let locked: Bool
+    let synced: Bool
+    var id: String { path }
+}
+
+private struct WorldEntry: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let last_played: String?
+}
+
 private struct LauncherView: View {
     @State private var core = CoreClient()
     private let tint = Color(red: 0.66, green: 0.87, blue: 0.84)
@@ -50,7 +75,11 @@ private struct LauncherView: View {
     @State private var log = ""
     @State private var status = ""
     @State private var busy = false
-    @State private var queueVisible = false
+    @State private var tab = ProfileTab.log
+    @State private var loadedTab: String?
+    @State private var content: [ContentEntry] = []
+    @State private var worlds: [WorldEntry] = []
+    @State private var pendingRemoval: (profileID: String, entry: ContentEntry)?
     @State private var search = ""
     @State private var showLogin = false
     @State private var nickname = ""
@@ -92,20 +121,14 @@ private struct LauncherView: View {
                         .font(.callout)
                         Divider()
                         if !status.isEmpty { Text(status).font(.callout) }
-                        Picker("Деталі", selection: $queueVisible) {
-                            Text("Живий лог").tag(false)
-                            Text("Завантаження").tag(true)
+                        Picker("Деталі", selection: $tab) {
+                            ForEach(ProfileTab.allCases, id: \.self) { item in
+                                Text(item.rawValue).tag(item)
+                            }
                         }
                         .labelsHidden()
                         .pickerStyle(.segmented)
-                        if queueVisible {
-                            if jobs.isEmpty { Text("Черга порожня.") }
-                            ForEach(jobs) { job in jobRow(job) }
-                        } else {
-                            Text(log.isEmpty ? "Тут з’явиться вивід Minecraft." : log)
-                                .font(.system(.callout, design: .monospaced))
-                                .textSelection(.enabled)
-                        }
+                        tabContent
                     }
                     .padding(.horizontal, 30)
                     .padding(.bottom, 30)
@@ -118,6 +141,7 @@ private struct LauncherView: View {
                 Button("Імпортувати .mrpack", systemImage: "plus", action: importPack)
                 Button("Оновити", systemImage: "arrow.clockwise") {
                     coverKey = nil
+                    loadedTab = nil
                     Task { await perform(refresh) }
                 }
             }
@@ -131,6 +155,20 @@ private struct LauncherView: View {
         }
         .onChange(of: selectedID) {
             Task { await perform(loadSelection) }
+        }
+        .onChange(of: tab) {
+            Task { await perform(loadSelection) }
+        }
+        .confirmationDialog("Видалити контент?", isPresented: Binding(
+            get: { pendingRemoval != nil },
+            set: { if !$0 { pendingRemoval = nil } }
+        ), presenting: pendingRemoval) { removal in
+            Button("Видалити", role: .destructive) {
+                mutate("remove_content", ["id": removal.profileID, "path": removal.entry.path])
+            }
+            Button("Скасувати", role: .cancel) {}
+        } message: { removal in
+            Text(removal.entry.name)
         }
         .alert("Офлайн-акаунт", isPresented: $showLogin) {
             TextField("Ім’я гравця", text: $nickname)
@@ -149,6 +187,90 @@ private struct LauncherView: View {
                 .frame(width: 680, height: 550)
             }
         }
+    }
+
+    private func tabKey(_ profile: Profile, _ tab: ProfileTab) -> String {
+        "\(profile.id)/\(profile.running)/\(profile.quarantined)/\(tab)"
+    }
+
+    @ViewBuilder private var tabContent: some View {
+        switch tab {
+        case .queue:
+            if jobs.isEmpty { Text("Черга порожня.") }
+            ForEach(jobs) { job in jobRow(job) }
+        case .log:
+            Text(log.isEmpty ? "Тут з’явиться вивід Minecraft." : log)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+        case .content, .worlds:
+            if let profile {
+                if tab == .content {
+                    Button("Додати .jar", systemImage: "plus") { addMod(profile) }
+                        .disabled(busy || profile.running || profile.quarantined)
+                }
+                if loadedTab != tabKey(profile, tab) {
+                    ProgressView()
+                } else if tab == .content {
+                    if content.isEmpty { Text("Контенту ще немає.") }
+                    ForEach(content) { entry in contentRow(profile, entry) }
+                } else {
+                    if worlds.isEmpty { Text("Світів ще немає.") }
+                    ForEach(worlds) { world in worldRow(profile, world) }
+                }
+            } else {
+                Text("Виберіть профіль.")
+            }
+        }
+    }
+
+    private func contentRow(_ profile: Profile, _ entry: ContentEntry) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(entry.name).font(.headline)
+            let state = entry.enabled ? "Увімкнено" : "Вимкнено"
+            let managed = entry.locked || entry.synced ? " · Керований" : ""
+            Text("\(entry.file) · \(entry.kind) · \(entry.version ?? "—") · \(state)\(managed)")
+                .font(.callout)
+            if !profile.running && !profile.quarantined && !entry.locked && !entry.synced {
+                HStack {
+                    Button(entry.enabled ? "Вимкнути" : "Увімкнути") {
+                        mutate("set_content_enabled", [
+                            "id": profile.id, "path": entry.path,
+                            "action": entry.enabled ? "disable" : "enable"
+                        ])
+                    }
+                    Button("Видалити") { pendingRemoval = (profile.id, entry) }
+                }
+                .disabled(busy)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func worldRow(_ profile: Profile, _ world: WorldEntry) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(world.name).font(.headline)
+            Text("Остання гра · \(world.last_played ?? "—")").font(.callout)
+            if !profile.running && !profile.quarantined {
+                HStack {
+                    Button("Відкрити світ") {
+                        mutate("open_world", ["id": profile.id, "world": world.id])
+                    }
+                    Button("Резервна копія") {
+                        mutate("backup_world", ["id": profile.id, "world": world.id],
+                               message: "Резервну копію створено.")
+                    }
+                }
+                .disabled(busy)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func addMod(_ profile: Profile) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "jar") ?? .data]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        mutate("add_mod", ["id": profile.id, "path": url.path])
     }
 
     private var hero: some View {
@@ -227,6 +349,7 @@ private struct LauncherView: View {
             cover = nil
             coverKey = nil
             log = ""
+            loadedTab = nil
             return
         }
         let key = "\(profile.id)/\(profile.running)/\(profile.last_played ?? "")"
@@ -236,8 +359,25 @@ private struct LauncherView: View {
             cover = path.flatMap { NSImage(contentsOfFile: $0) }
             coverKey = key
         }
-        let next = try await core.call("log", ["id": profile.id], as: String.self)
-        if selectedID == profile.id { log = next }
+        let requestedTab = tab
+        let key = tabKey(profile, requestedTab)
+        switch requestedTab {
+        case .content where key != loadedTab:
+            let entries = try await core.call("content", ["id": profile.id], as: [ContentEntry].self)
+            guard selectedID == profile.id, tab == requestedTab else { return }
+            content = entries
+            loadedTab = key
+        case .worlds where key != loadedTab:
+            let entries = try await core.call("worlds", ["id": profile.id], as: [WorldEntry].self)
+            guard selectedID == profile.id, tab == requestedTab else { return }
+            worlds = entries
+            loadedTab = key
+        case .log:
+            let next = try await core.call("log", ["id": profile.id], as: String.self)
+            if selectedID == profile.id { log = next }
+        default:
+            break
+        }
     }
 
     @MainActor private func perform(_ action: () async throws -> Void) async {
@@ -250,8 +390,9 @@ private struct LauncherView: View {
     private func mutate(_ method: String, _ values: [String: String], message: String = "") {
         Task {
             await perform {
-                if method == "play" { status = "Готуємо Minecraft…" }
+                if method == "play" || method == "open_world" { status = "Готуємо Minecraft…" }
                 _ = try await core.call(method, values, as: EmptyReply.self)
+                loadedTab = nil
                 status = message
                 try await refresh()
             }

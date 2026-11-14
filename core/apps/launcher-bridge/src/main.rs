@@ -3,10 +3,10 @@ use serde_json::{Value, json};
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{self, BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 use theseus::{
-    EventState, State, install, instance, logs, minecraft_auth, process,
+    EventState, State, install, instance, logs, minecraft_auth, process, worlds,
 };
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -15,16 +15,60 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Library,
-    Cover { id: String },
-    Play { id: String },
-    Stop { id: String },
-    Log { id: String },
+    Cover {
+        id: String,
+    },
+    Play {
+        id: String,
+    },
+    Stop {
+        id: String,
+    },
+    Log {
+        id: String,
+    },
+    Content {
+        id: String,
+    },
+    AddMod {
+        id: String,
+        path: PathBuf,
+    },
+    SetContentEnabled {
+        id: String,
+        path: String,
+        action: ContentAction,
+    },
+    RemoveContent {
+        id: String,
+        path: String,
+    },
+    Worlds {
+        id: String,
+    },
+    OpenWorld {
+        id: String,
+        world: String,
+    },
+    BackupWorld {
+        id: String,
+        world: String,
+    },
     Queue,
-    Import { path: PathBuf },
-    Job { id: uuid::Uuid, action: JobAction },
-    OfflineLogin { name: String },
+    Import {
+        path: PathBuf,
+    },
+    Job {
+        id: uuid::Uuid,
+        action: JobAction,
+    },
+    OfflineLogin {
+        name: String,
+    },
     BeginLogin,
-    FinishLogin { code: String },
+    FinishLogin {
+        code: String,
+    },
     CancelLogin,
 }
 
@@ -37,7 +81,31 @@ enum JobAction {
     Retry,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ContentAction {
+    Enable,
+    Disable,
+}
+
 type PendingLogin = Option<(Instant, theseus::data::MinecraftLoginFlow)>;
+
+async fn require_stopped(id: &str) -> Result<()> {
+    if !process::get_by_instance_id(id).await?.is_empty() {
+        return Err("Спочатку закрийте Minecraft для цього профілю.".into());
+    }
+    Ok(())
+}
+
+async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
+    if !matches!(
+        Path::new(world).components().collect::<Vec<_>>().as_slice(),
+        [Component::Normal(_)]
+    ) {
+        return Err("Неприпустима назва папки світу.".into());
+    }
+    Ok(worlds::get_singleplayer_world(id, world).await?)
+}
 
 async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     Ok(match request {
@@ -78,6 +146,68 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             Value::Null
         }
         Request::Log { id } => json!(logs::get_live_log_buffer(&id).await?),
+        Request::Content { id } => {
+            instance::sync_content_files(&id).await?;
+            let mut items = instance::get_content_items(&id, None).await?;
+            items.sort_by_cached_key(|item| item.file_name.to_lowercase());
+            json!(items.into_iter().map(|item| {
+                let name = item.project.map(|project| project.title)
+                    .or_else(|| item.embedded_metadata.as_ref().and_then(|meta| meta.name.clone()))
+                    .unwrap_or_else(|| item.file_name.clone());
+                let version = item.version.map(|version| version.version_number)
+                    .or_else(|| item.embedded_metadata.and_then(|meta| meta.version));
+                json!({
+                    "path": item.file_path,
+                    "name": name,
+                    "file": item.file_name,
+                    "version": version,
+                    "enabled": item.enabled,
+                    "locked": item.locked,
+                    "synced": item.synced_pack.is_some(),
+                    "kind": item.project_type,
+                })
+            }).collect::<Vec<_>>())
+        }
+        Request::AddMod { id, path } => {
+            require_stopped(&id).await?;
+            if !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("jar")) {
+                return Err("Виберіть файл мода .jar.".into());
+            }
+            instance::add_project_from_path(&id, &path, Some(theseus::data::ProjectType::Mod)).await?;
+            Value::Null
+        }
+        Request::SetContentEnabled { id, path, action } => {
+            require_stopped(&id).await?;
+            instance::toggle_disable_project(&id, &path, Some(matches!(action, ContentAction::Enable))).await?;
+            Value::Null
+        }
+        Request::RemoveContent { id, path } => {
+            require_stopped(&id).await?;
+            instance::remove_project(&id, &path).await?;
+            Value::Null
+        }
+        Request::Worlds { id } => json!(
+            worlds::get_instance_worlds(&id).await?.into_iter()
+                .filter(|world| matches!(&world.details, worlds::WorldDetails::Singleplayer { .. }))
+                .map(|world| json!({
+                    "id": world.world_id(),
+                    "name": world.name,
+                    "last_played": world.last_played.map(|date| date.format("%Y-%m-%d").to_string()),
+                }))
+                .collect::<Vec<_>>()
+        ),
+        Request::OpenWorld { id, world } => {
+            require_stopped(&id).await?;
+            let world = local_world(&id, &world).await?;
+            Box::pin(instance::run(&id, instance::QuickPlayType::Singleplayer(world.world_id().to_owned()))).await?;
+            Value::Null
+        }
+        Request::BackupWorld { id, world } => {
+            require_stopped(&id).await?;
+            let world = local_world(&id, &world).await?;
+            let directory = instance::get_full_path(&id).await?;
+            json!(worlds::backup_world(&directory, world.world_id()).await?)
+        }
         Request::Queue => {
             let jobs: Vec<_> = install::list_jobs(true).await?.into_iter().map(|job| {
                 json!({
