@@ -79,8 +79,14 @@ jobs:
           MACOS_ARCH: ${{ matrix.arch }}
         run: |
           output="$(swift build --package-path swiftui -c release --show-bin-path)"
-          lipo -verify_arch "$MACOS_ARCH" "$output/Gradient"
-          lipo -verify_arch "$MACOS_ARCH" core/target/release/gradient-core
+          for binary in "$output/Gradient" core/target/release/gradient-core; do
+            actual="$(lipo -archs "$binary")"
+            printf '%s: %s\n' "$binary" "$actual"
+            if [[ "$actual" != "$MACOS_ARCH" ]]; then
+              echo "::error::Expected $MACOS_ARCH, got $actual in $binary"
+              exit 1
+            fi
+          done
           stage="$RUNNER_TEMP/gradient-native-macos"
           mkdir -p "$stage"
           cp "$output/Gradient" core/target/release/gradient-core "$stage/"
