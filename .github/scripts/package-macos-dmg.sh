@@ -31,6 +31,9 @@ hdiutil attach "$image" -readonly -nobrowse -mountpoint "$mount" -quiet
 mounted=true
 test "$(readlink "$mount/Applications")" = /Applications
 test -f "$mount/$bundle/Contents/Info.plist"
+test -s "$mount/$bundle/Contents/Resources/InterfaceStrings.json"
+codesign --verify --deep --strict --verbose=2 "$mount/$bundle"
+lipo "$mount/$bundle/Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle" -verify_arch "$arch"
 for binary in Gradient gradient-core; do
   test "$(lipo -archs "$mount/$bundle/Contents/MacOS/$binary")" = "$arch"
 done

@@ -4,9 +4,8 @@ umask 077
 
 app=$1
 arch=$2
+sparkle=${3:-false}
 case "$arch" in arm64|x86_64) ;; *) exit 1 ;; esac
-: "${SPARKLE_PUBLIC_KEY:?Set the SPARKLE_PUBLIC_KEY repository variable}"
-: "${SPARKLE_PRIVATE_KEY:?Set the SPARKLE_PRIVATE_KEY repository secret}"
 : "${MACOS_CERTIFICATE_BASE64:?Set the MACOS_CERTIFICATE_BASE64 repository secret}"
 : "${MACOS_CERTIFICATE_PASSWORD:?Set the MACOS_CERTIFICATE_PASSWORD repository secret}"
 : "${MACOS_NOTARY_KEY_BASE64:?Set the MACOS_NOTARY_KEY_BASE64 repository secret}"
@@ -22,12 +21,16 @@ release_url="https://github.com/$GITHUB_REPOSITORY/releases"
 appcast="appcast-macos-$arch.xml"
 archive="gradient-native-macos-$arch.dmg"
 plist="$app/Contents/Info.plist"
-plutil -insert SUPublicEDKey -string "$SPARKLE_PUBLIC_KEY" "$plist"
-plutil -insert SUFeedURL -string "$release_url/latest/download/$appcast" "$plist"
-plutil -insert SUEnableAutomaticChecks -bool NO "$plist"
-plutil -insert SUAllowsAutomaticUpdates -bool NO "$plist"
-plutil -insert SUVerifyUpdateBeforeExtraction -bool YES "$plist"
-plutil -insert SURequireSignedFeed -bool YES "$plist"
+if [[ "$sparkle" == true ]]; then
+  : "${SPARKLE_PUBLIC_KEY:?Set the SPARKLE_PUBLIC_KEY repository variable}"
+  : "${SPARKLE_PRIVATE_KEY:?Set the SPARKLE_PRIVATE_KEY repository secret}"
+  plutil -insert SUPublicEDKey -string "$SPARKLE_PUBLIC_KEY" "$plist"
+  plutil -insert SUFeedURL -string "$release_url/latest/download/$appcast" "$plist"
+  plutil -insert SUEnableAutomaticChecks -bool NO "$plist"
+  plutil -insert SUAllowsAutomaticUpdates -bool NO "$plist"
+  plutil -insert SUVerifyUpdateBeforeExtraction -bool YES "$plist"
+  plutil -insert SURequireSignedFeed -bool YES "$plist"
+fi
 plutil -lint "$plist"
 
 printf '%s' "$MACOS_CERTIFICATE_BASE64" | base64 -D > "$temp/signing.p12"
@@ -38,16 +41,7 @@ security import "$temp/signing.p12" -k "$keychain" -f pkcs12 -P "$MACOS_CERTIFIC
 security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
 identity=$(security find-identity -v -p codesigning "$keychain" | awk '/Developer ID Application/ && !found++ { print $2 }')
 test -n "$identity"
-sign=(codesign --force --timestamp --options runtime --keychain "$keychain" --sign "$identity")
-framework="$app/Contents/Frameworks/Sparkle.framework"
-sparkle_version="$framework/Versions/Current"
-for target in "$sparkle_version/Autoupdate" "$sparkle_version/Updater.app" "$sparkle_version"/XPCServices/*.xpc; do
-  if [[ -e "$target" ]]; then "${sign[@]}" --preserve-metadata=entitlements "$target"; fi
-done
-"${sign[@]}" "$framework"
-"${sign[@]}" "$app/Contents/MacOS/gradient-core"
-"${sign[@]}" "$app"
-codesign --verify --deep --strict --verbose=2 "$app"
+bash "$(dirname "$0")/sign-macos-app.sh" "$app" --timestamp --options runtime --keychain "$keychain" --sign "$identity"
 
 bash "$(dirname "$0")/package-macos-dmg.sh" "$app" "$arch"
 bundle_id=$(plutil -extract CFBundleIdentifier raw "$plist")
@@ -58,6 +52,8 @@ xcrun notarytool submit "$archive" --key "$temp/notary.p8" --key-id "$MACOS_NOTA
 jq -e '.status == "Accepted"' "$temp/notary.json"
 xcrun stapler staple "$archive"
 xcrun stapler validate "$archive"
+
+if [[ "$sparkle" != true ]]; then exit 0; fi
 
 curl --fail --silent --show-error --location \
   https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-2.10.1.tar.xz \

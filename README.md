@@ -76,7 +76,9 @@ git push gradient native-v0.1.1
 
 У **Налаштуваннях → Перевірити оновлення** можна завантажити й встановити нову версію з перезапуском лаунчера. На Windows один раз встановіть Gradient через `*-Setup.exe` з GitHub Releases. На macOS один раз встановіть підписаний `Gradient Launcher.app` для своєї архітектури. Перед встановленням оновлення завершіть Minecraft і дочекайтеся завершення встановлення модпаків. Портативна Windows-збірка й непідписані macOS-збірки показують посилання для ручного завантаження.
 
-Щоб увімкнути Sparkle для релізів, додайте `SPARKLE_PUBLIC_KEY` у GitHub Actions Variables і відповідний приватний ключ, експортований через `generate_keys -x`, у `SPARKLE_PRIVATE_KEY`. У GitHub Actions Secrets також додайте `MACOS_CERTIFICATE_BASE64` (Developer ID Application у форматі `.p12`, закодований у Base64), `MACOS_CERTIFICATE_PASSWORD`, `MACOS_NOTARY_KEY_BASE64` (ключ App Store Connect `.p8` у Base64), `MACOS_NOTARY_KEY_ID` і `MACOS_NOTARY_ISSUER`. Workflow підпише та нотаризує обидві macOS-збірки і додасть до релізу окремий підписаний appcast для кожної архітектури. Для перевірки встановіть перший підписаний реліз і перевірте оновлення після публікації другого.
+Для підпису Developer ID і нотаризації обох macOS-збірок додайте в GitHub Actions Secrets `MACOS_CERTIFICATE_BASE64` (Developer ID Application у форматі `.p12`, закодований у Base64), `MACOS_CERTIFICATE_PASSWORD`, `MACOS_NOTARY_KEY_BASE64` (ключ App Store Connect `.p8` у Base64), `MACOS_NOTARY_KEY_ID` і `MACOS_NOTARY_ISSUER`. Без цих даних workflow використовує локальний ad hoc-підпис для тестування. Gatekeeper може блокувати такий .dmg після завантаження.
+
+Для встановлення оновлень через Sparkle додайте `SPARKLE_PUBLIC_KEY` у GitHub Actions Variables і відповідний приватний ключ, експортований через `generate_keys -x`, у `SPARKLE_PRIVATE_KEY`. Збірка за релізним тегом додасть окремий підписаний appcast для кожної архітектури. Для перевірки встановіть перший підписаний реліз і перевірте оновлення після публікації другого.
 
 Обидві оболонки приймають шлях до `.mrpack` як аргумент і пропонують імпортувати файл. Пакет macOS також оголошує підтримку `.mrpack` у Finder.
 
