@@ -26,6 +26,10 @@ struct DiscoverView: View {
 
     @State private var query = ""
     @State private var kind = "modpack"
+    @State private var sort = ""
+    @State private var gameVersion = ""
+    @State private var loader = ""
+    @State private var appliedFilters: [String: String] = [:]
     @State private var submittedQuery = ""
     @State private var submittedKind = "modpack"
     @State private var target: String?
@@ -51,6 +55,28 @@ struct DiscoverView: View {
                     .onSubmit { beginSearch() }
                 Button("Пошук", systemImage: "magnifyingglass", action: beginSearch)
                     .disabled(busy)
+            }
+            DisclosureGroup("Фільтри та сортування") {
+                Form {
+                    Picker("Сортувати", selection: $sort) {
+                        Text("Автоматично").tag("")
+                        Text("За завантаженнями").tag("downloads")
+                        Text("Найновіші").tag("newest")
+                        Text("Нещодавно оновлені").tag("updated")
+                    }
+                    if kind == "modpack" {
+                        TextField("Версія Minecraft", text: $gameVersion, prompt: Text("1.21.1"))
+                        Picker("Завантажувач", selection: $loader) {
+                            Text("Усі").tag("")
+                            Text("Fabric").tag("fabric")
+                            Text("Forge").tag("forge")
+                            Text("NeoForge").tag("neoforge")
+                            Text("Quilt").tag("quilt")
+                        }
+                    }
+                    Button("Застосувати") { beginSearch() }
+                }
+                .disabled(busy)
             }
             List(results) { hit in
                 Button { showVersions(hit) } label: {
@@ -134,6 +160,12 @@ struct DiscoverView: View {
         submittedQuery = query
         submittedKind = kind
         target = kind == "mod" ? profileID : nil
+        appliedFilters = [:]
+        if !sort.isEmpty { appliedFilters["sort"] = sort }
+        if kind == "modpack" {
+            if !gameVersion.isEmpty { appliedFilters["game_version"] = gameVersion }
+            if !loader.isEmpty { appliedFilters["loader"] = loader }
+        }
         Task { await loadPage(0) }
     }
 
@@ -147,9 +179,10 @@ struct DiscoverView: View {
 
     @MainActor private func loadPage(_ offset: UInt32) async {
         await run("Шукаємо…") {
-            let page = try await core.call("discover", request("search", [
+            let filters = appliedFilters.merging([
                 "query": submittedQuery, "offset": String(offset)
-            ]), as: Page.self)
+            ]) { _, current in current }
+            let page = try await core.call("discover", request("search", filters), as: Page.self)
             results = page.hits
             currentOffset = offset
             nextOffset = page.next_offset

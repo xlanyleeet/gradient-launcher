@@ -18,7 +18,7 @@ public sealed partial class MainWindow
     }
 
     private sealed record SearchPage(DiscoverHit[] hits, uint? next_offset);
-    private sealed record SearchSpec(string Query, string Kind, string? Profile);
+    private sealed record SearchSpec(string Query, string Kind, string? Profile, string? Sort, string? GameVersion, string? Loader);
     private SearchSpec? discoverSearch;
     private uint? discoverOffset;
     private uint currentOffset;
@@ -56,13 +56,20 @@ public sealed partial class MainWindow
     private async void DiscoverFilterChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ready && DiscoverPage.Visibility == Visibility.Visible)
+        {
+            DiscoverPackFilters.Visibility = (DiscoverKind.SelectedItem as ComboBoxItem)?.Tag as string == "modpack"
+                ? Visibility.Visible : Visibility.Collapsed;
             await SubmitDiscoverSearch();
+        }
     }
 
     private SearchSpec CurrentDiscoverSearch()
     {
         var kind = (DiscoverKind.SelectedItem as ComboBoxItem)?.Tag as string ?? "modpack";
-        return new SearchSpec(DiscoverQuery.Text.Trim(), kind, kind == "mod" ? SelectedProfile?.id : null);
+        return new SearchSpec(DiscoverQuery.Text.Trim(), kind, kind == "mod" ? SelectedProfile?.id : null,
+            (DiscoverSort.SelectedItem as ComboBoxItem)?.Tag as string,
+            kind == "modpack" ? DiscoverGameVersion.Text.Trim() : null,
+            kind == "modpack" ? (DiscoverLoader.SelectedItem as ComboBoxItem)?.Tag as string : null);
     }
 
     private Task SubmitDiscoverSearch()
@@ -102,7 +109,8 @@ public sealed partial class MainWindow
         var page = await core.Call<SearchPage>(new
         {
             method = "discover", action = "search", query = search.Query,
-            kind = search.Kind, profile = search.Profile, offset = offset.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            kind = search.Kind, profile = search.Profile, offset = offset.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            sort = search.Sort, game_version = search.GameVersion, loader = search.Loader
         });
         discoverSearch = search;
         currentOffset = offset;

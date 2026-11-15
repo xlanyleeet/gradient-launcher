@@ -17,6 +17,11 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Library,
+    UploadSkin {
+        path: PathBuf,
+        variant: SkinVariant,
+    },
+    ResetSkin,
     JobDiagnostics {
         id: uuid::Uuid,
     },
@@ -222,6 +227,13 @@ enum Request {
     CancelLogin,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SkinVariant {
+    Classic,
+    Slim,
+}
+
 #[derive(serde::Serialize, Deserialize)]
 struct LaunchSettings {
     memory_mib: u32,
@@ -307,6 +319,33 @@ async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
 
 async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     Ok(match request {
+        Request::UploadSkin { path, variant } => {
+            use std::io::Read;
+            const LIMIT: u64 = 1024 * 1024;
+            let file = std::fs::File::open(&path)?;
+            if !file.metadata()?.is_file() {
+                return Err("Виберіть PNG-файл скіна.".into());
+            }
+            let mut bytes = Vec::new();
+            file.take(LIMIT + 1).read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > LIMIT || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+                return Err("Виберіть PNG-файл скіна розміром до 1 МіБ.".into());
+            }
+            let variant = match variant {
+                SkinVariant::Classic => theseus::minecraft_skins::MinecraftSkinVariant::Classic,
+                SkinVariant::Slim => theseus::minecraft_skins::MinecraftSkinVariant::Slim,
+            };
+            let cape = Box::pin(theseus::minecraft_skins::get_available_capes())
+                .await?.into_iter().find(|cape| cape.is_equipped);
+            Box::pin(theseus::minecraft_skins::add_and_equip_custom_skin(bytes.into(), variant, cape)).await?;
+            Box::pin(theseus::minecraft_skins::flush_pending_skin_change()).await?;
+            Value::Null
+        }
+        Request::ResetSkin => {
+            Box::pin(theseus::minecraft_skins::unequip_skin()).await?;
+            Box::pin(theseus::minecraft_skins::flush_pending_skin_change()).await?;
+            Value::Null
+        }
         Request::JobDiagnostics { id } => json!(install::job_support_details(id).await?),
         Request::InstalledModVersions { id, path } => discover::installed_mod_versions(&id, &path).await?,
         Request::SwitchModVersion { id, path, version } => {

@@ -25,6 +25,33 @@ public sealed partial class MainWindow
 
     public sealed record Group(string id, string name, bool selected);
 
+    private async void ManageSkin(object sender, RoutedEventArgs e) => await Run(async () =>
+    {
+        var model = new ComboBox { Header = "Модель", ItemsSource = new[] { "Класична", "Тонкі руки" }, SelectedIndex = 0 };
+        var dialog = Editor("Скін активного Minecraft-акаунта", model, "Вибрати PNG");
+        dialog.SecondaryButtonText = "Скинути скін і плащ";
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            var picker = new FileOpenPicker();
+            picker.FileTypeFilter.Add(".png");
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+            var file = await picker.PickSingleFileAsync();
+            if (file is null) return;
+            await core.Call<JsonElement>(new { method = "upload_skin", path = file.Path,
+                variant = model.SelectedIndex == 1 ? "slim" : "classic" });
+            Status.Text = "Скін Minecraft застосовано.";
+        }
+        else if (result == ContentDialogResult.Secondary)
+        {
+            var confirm = Editor("Скинути скін і плащ?", "Minecraft повернеться до стандартного скіна.", "Скинути");
+            confirm.DefaultButton = ContentDialogButton.Close;
+            if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+            await core.Call<JsonElement>(new { method = "reset_skin" });
+            Status.Text = "Скін Minecraft скинуто.";
+        }
+    }, waitForCore: true);
+
     private async void OpenProfileFolder(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         if (SelectedProfile is not { } profile) return;

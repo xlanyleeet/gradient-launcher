@@ -82,6 +82,7 @@
                                 <MenuFlyoutSeparator/>
                                 <MenuFlyoutItem Text="Увійти в Microsoft" Click="MicrosoftLogin"/>
                                 <MenuFlyoutItem Text="Додати офлайн-акаунт" Click="Login"/>
+                                <MenuFlyoutItem Text="Скін Minecraft" Click="ManageSkin"/>
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
@@ -222,6 +223,27 @@
                                             QuerySubmitted="DiscoverSearch"/>
                             <Button Grid.Column="1" Content="Пошук" Click="DiscoverSearchClick"/>
                         </Grid>
+                        <Expander Header="Фільтри та сортування" HorizontalAlignment="Stretch">
+                            <StackPanel Spacing="8">
+                                <ComboBox x:Name="DiscoverSort" Header="Сортувати" SelectedIndex="0">
+                                    <ComboBoxItem Content="Автоматично"/>
+                                    <ComboBoxItem Content="За завантаженнями" Tag="downloads"/>
+                                    <ComboBoxItem Content="Найновіші" Tag="newest"/>
+                                    <ComboBoxItem Content="Нещодавно оновлені" Tag="updated"/>
+                                </ComboBox>
+                                <StackPanel x:Name="DiscoverPackFilters" Spacing="8">
+                                    <TextBox x:Name="DiscoverGameVersion" Header="Версія Minecraft" PlaceholderText="Наприклад, 1.21.1"/>
+                                    <ComboBox x:Name="DiscoverLoader" Header="Завантажувач" SelectedIndex="0">
+                                        <ComboBoxItem Content="Усі"/>
+                                        <ComboBoxItem Content="Fabric" Tag="fabric"/>
+                                        <ComboBoxItem Content="Forge" Tag="forge"/>
+                                        <ComboBoxItem Content="NeoForge" Tag="neoforge"/>
+                                        <ComboBoxItem Content="Quilt" Tag="quilt"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <Button Content="Застосувати" Click="DiscoverSearchClick"/>
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
                     <ListView x:Name="DiscoverResults" Grid.Row="2" IsItemClickEnabled="True"
                               SelectionMode="None" ItemClick="SelectDiscoverResult">

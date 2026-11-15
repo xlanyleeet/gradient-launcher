@@ -28,6 +28,9 @@ pub(super) enum Request {
         kind: Kind,
         profile: Option<String>,
         offset: Option<String>,
+        sort: Option<Sort>,
+        game_version: Option<String>,
+        loader: Option<data::ModLoader>,
     },
     Versions {
         project: String,
@@ -40,6 +43,26 @@ pub(super) enum Request {
         kind: Kind,
         profile: Option<String>,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum Sort {
+    Relevance,
+    Downloads,
+    Newest,
+    Updated,
+}
+
+impl Sort {
+    fn index(self) -> &'static str {
+        match self {
+            Self::Relevance => "relevance",
+            Self::Downloads => "downloads",
+            Self::Newest => "newest",
+            Self::Updated => "updated",
+        }
+    }
 }
 
 async fn target(
@@ -152,6 +175,9 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             kind,
             profile,
             offset,
+            sort,
+            game_version,
+            loader,
         } => {
             let target = target(&kind, profile).await?;
             let offset = offset
@@ -178,6 +204,29 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                     "environment:client_or_server".to_owned(),
                     "environment:client_or_server_prefers_both".to_owned(),
                 ]);
+            } else {
+                if let Some(version) = game_version
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    if version.len() > 40
+                        || !version.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric()
+                                || b".-_".contains(&byte)
+                        })
+                    {
+                        return Err(
+                            "Введіть версію Minecraft, наприклад 1.21.1."
+                                .into(),
+                        );
+                    }
+                    filters.push(vec![format!("versions:{version}")]);
+                }
+                if let Some(loader) = loader {
+                    filters
+                        .push(vec![format!("categories:{}", loader.as_str())]);
+                }
             }
             let facets = serde_json::to_string(&filters)?;
             let offset_param = offset.to_string();
@@ -187,11 +236,12 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                     ("query", query),
                     (
                         "index",
-                        if query.is_empty() {
-                            "downloads"
+                        sort.unwrap_or(if query.is_empty() {
+                            Sort::Downloads
                         } else {
-                            "relevance"
-                        },
+                            Sort::Relevance
+                        })
+                        .index(),
                     ),
                     ("facets", facets.as_str()),
                     ("offset", offset_param.as_str()),

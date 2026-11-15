@@ -132,6 +132,7 @@ private struct LauncherView: View {
     @State private var pendingRemoval: (profileID: String, entry: ContentEntry)?
     @State private var modVersion: ModVersionView.Target?
     @State private var diagnosticsJob: Job?
+    @State private var skinSettings = false
     @State private var search = ""
     @State private var showLogin = false
     @State private var nickname = ""
@@ -179,6 +180,7 @@ private struct LauncherView: View {
             .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: 8) {
                     Button("Акаунти", systemImage: "person.2", action: showAccounts)
+                    Button("Скін Minecraft", systemImage: "person.crop.square") { skinSettings = true }
                     Button("Увійти в Microsoft", systemImage: "person.crop.circle", action: beginMicrosoft)
                     Button("Офлайн-акаунт", systemImage: "person") { showLogin = true }
                 }
@@ -329,6 +331,7 @@ private struct LauncherView: View {
         .sheet(item: $diagnosticsJob) { job in
             JobDiagnosticsView(core: core, jobID: job.id)
         }
+        .sheet(isPresented: $skinSettings) { SkinSettingsView(core: core) }
         .alert("Видалити профіль?", isPresented: Binding(
             get: { profileToRemove != nil },
             set: { if !$0 { profileToRemove = nil } }
