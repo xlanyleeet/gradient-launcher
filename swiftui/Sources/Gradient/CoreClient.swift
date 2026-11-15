@@ -13,13 +13,13 @@ actor CoreClient {
     }
 
     func send<T: Decodable, Request: Encodable>(_ request: Request, as _: T.Type) throws -> T {
-        guard !isSuspendedForUpdate else { throw CoreError("Дочекайтеся завершення оновлення Gradient.") }
+        guard !isSuspendedForUpdate else { throw CoreError(tr("Дочекайтеся завершення оновлення Gradient.")) }
         if process?.isRunning != true {
             try connect()
         }
         var line = try JSONEncoder().encode(request)
         line.append(10)
-        guard let input else { throw CoreError("Канал ядра закрито.") }
+        guard let input else { throw CoreError(tr("Канал ядра закрито.")) }
         try input.write(contentsOf: line)
         return try JSONDecoder().decode(Reply<T>.self, from: readLine()).value()
     }
@@ -46,7 +46,7 @@ actor CoreClient {
         let embedded = Bundle.main.executableURL?.deletingLastPathComponent()
             .appendingPathComponent("gradient-core")
         let executable = environment["GRADIENT_CORE"].map { URL(fileURLWithPath: $0) } ?? embedded
-        guard let executable else { throw CoreError("Вкажіть шлях до ядра в GRADIENT_CORE.") }
+        guard let executable else { throw CoreError(tr("Вкажіть шлях до ядра в GRADIENT_CORE.")) }
 
         let child = Process()
         let toCore = Pipe()
@@ -61,7 +61,7 @@ actor CoreClient {
         buffer.removeAll()
         do {
             let hello = try JSONDecoder().decode(Hello.self, from: readLine())
-            guard hello.version == 1 else { throw CoreError("Несумісна версія ядра.") }
+            guard hello.version == 1 else { throw CoreError(tr("Несумісна версія ядра.")) }
         } catch {
             try? input?.close()
             process = nil
@@ -70,7 +70,7 @@ actor CoreClient {
     }
 
     private func readLine() throws -> Data {
-        guard let output else { throw CoreError("Канал ядра закрито.") }
+        guard let output else { throw CoreError(tr("Канал ядра закрито.")) }
         while true {
             if let newline = buffer.firstIndex(of: 10) {
                 let line = Data(buffer[..<newline])
@@ -78,7 +78,7 @@ actor CoreClient {
                 return line
             }
             let data = output.availableData
-            guard !data.isEmpty else { throw CoreError("Ядро завершило роботу. Перевірте каталог даних.") }
+            guard !data.isEmpty else { throw CoreError(tr("Ядро завершило роботу. Перевірте каталог даних.")) }
             buffer.append(data)
         }
     }
@@ -105,7 +105,7 @@ private struct Reply<T: Decodable>: Decodable {
 
     func value() throws -> T {
         if let error { throw CoreError(error) }
-        guard let result else { throw CoreError("Порожня відповідь ядра.") }
+        guard let result else { throw CoreError(tr("Порожня відповідь ядра.")) }
         return result
     }
 }

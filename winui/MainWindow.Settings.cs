@@ -6,6 +6,8 @@ using WinRT.Interop;
 using Velopack;
 using Velopack.Sources;
 
+using static Gradient.InterfaceText;
+
 namespace Gradient;
 
 public sealed partial class MainWindow
@@ -20,7 +22,7 @@ public sealed partial class MainWindow
     {
         CheckUpdateButton.IsEnabled = false;
         UpdateDownload.Visibility = Visibility.Collapsed;
-        UpdateStatus.Text = "Перевіряємо оновлення…";
+        UpdateStatus.Text = Tr("Перевіряємо оновлення…");
         try
         {
             await Run(async () =>
@@ -36,14 +38,14 @@ public sealed partial class MainWindow
                     var info = await core.Call<UpdateInfo>(new { method = "check_update" });
                     if (info.available is { } release)
                     {
-                        UpdateStatus.Text = $"Встановлено {info.installed}. Доступна версія {release.version}.";
-                        UpdateDownload.Content = $"Завантажити {release.version}";
+                        UpdateStatus.Text = Tr("Встановлено {0}. Доступна версія {1}.", info.installed, release.version);
+                        UpdateDownload.Content = Tr("Завантажити {0}", release.version);
                         UpdateDownload.NavigateUri = new Uri(release.download_url);
                         UpdateDownload.Visibility = Visibility.Visible;
                     }
                     else
                     {
-                        UpdateStatus.Text = $"Встановлено {info.installed}. Новішого релізу для цієї платформи немає.";
+                        UpdateStatus.Text = Tr("Встановлено {0}. Новішого релізу для цієї платформи немає.", info.installed);
                     }
                 }
                 catch (Exception error) { UpdateStatus.Text = error.Message; }
@@ -57,15 +59,15 @@ public sealed partial class MainWindow
         var update = await manager.CheckForUpdatesAsync();
         if (update is null)
         {
-            UpdateStatus.Text = $"Встановлено {manager.CurrentVersion}. Новішого релізу немає.";
+            UpdateStatus.Text = Tr("Встановлено {0}. Новішого релізу немає.", manager.CurrentVersion);
             return;
         }
         var version = update.TargetFullRelease.Version;
-        UpdateStatus.Text = $"Доступна версія {version}.";
-        var dialog = Editor("Оновлення Gradient", $"Завантажити версію {version} й перезапустити лаунчер?", "Оновити й перезапустити");
+        UpdateStatus.Text = Tr("Доступна версія {0}.", version);
+        var dialog = Editor(Tr("Оновлення Gradient"), Tr("Завантажити версію {0} й перезапустити лаунчер?", version), Tr("Оновити й перезапустити"));
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         await core.Call<JsonElement>(new { method = "prepare_launcher_update" });
-        UpdateStatus.Text = $"Завантажуємо {version}…";
+        UpdateStatus.Text = Tr("Завантажуємо {0}…", version);
         await manager.DownloadUpdatesAsync(update);
         await core.StopForUpdateAsync();
         manager.ApplyUpdatesAndRestart(update.TargetFullRelease);
@@ -78,7 +80,7 @@ public sealed partial class MainWindow
             RegisterGradientScheme();
             Microsoft.Windows.AppLifecycle.ActivationRegistrationManager.RegisterForFileTypeActivation(
                 new[] { ".mrpack" }, "", "Gradient Launcher", Array.Empty<string>(), "");
-            SettingsStatus.Text = "Gradient зареєстровано для посилань gradient-native:// та файлів .mrpack.";
+            SettingsStatus.Text = Tr("Gradient зареєстровано для посилань gradient-native:// та файлів .mrpack.");
         }
         catch (Exception error) { SettingsStatus.Text = error.Message; }
     }
@@ -92,20 +94,20 @@ public sealed partial class MainWindow
         try
         {
             var runtimes = await core.Call<JavaRuntime[]>(new { method = "java_runtimes" });
-            var versions = new ComboBox { Header = "Версія Java", ItemsSource = new[] { "8", "17", "21", "25" }, SelectedIndex = 2 };
+            var versions = new ComboBox { Header = Tr("Версія Java"), ItemsSource = new[] { "8", "17", "21", "25" }, SelectedIndex = 2 };
             var current = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
             void ShowRuntime()
             {
                 var path = runtimes.FirstOrDefault(runtime => runtime.parsed_version.ToString() == (string)versions.SelectedItem);
-                current.Text = path is null ? "Для цієї версії шлях ще не збережено." : $"{path.version} · {path.path}";
+                current.Text = path is null ? Tr("Для цієї версії шлях ще не збережено.") : $"{path.version} · {path.path}";
             }
             versions.SelectionChanged += (_, _) => ShowRuntime();
             ShowRuntime();
             var content = new StackPanel { Spacing = 12 };
             content.Children.Add(versions);
             content.Children.Add(current);
-            var dialog = Editor("Інсталяції Java", content, "Вибрати файл");
-            dialog.SecondaryButtonText = "Завантажити";
+            var dialog = Editor(Tr("Інсталяції Java"), content, Tr("Вибрати файл"));
+            dialog.SecondaryButtonText = Tr("Завантажити");
             var result = await dialog.ShowAsync();
             var major = (string)versions.SelectedItem;
             if (result == ContentDialogResult.Primary)
@@ -119,11 +121,11 @@ public sealed partial class MainWindow
             }
             else if (result == ContentDialogResult.Secondary)
             {
-                JavaStatus.Text = $"Завантажуємо Java {major}…";
+                JavaStatus.Text = Tr("Завантажуємо Java {0}…", major);
                 await core.Call<JsonElement>(new { method = "download_java_runtime", major });
             }
             else return;
-            JavaStatus.Text = $"Java {major} збережено.";
+            JavaStatus.Text = Tr("Java {0} збережено.", major);
         }
         catch (Exception error) { JavaStatus.Text = error.Message; }
     }, waitForCore: true);
@@ -132,14 +134,14 @@ public sealed partial class MainWindow
     {
         if (SelectedProfile is not { running: false } profile) return;
         var values = await core.Call<ProfileLaunchSettings>(new { method = "profile_launch_settings", id = profile.id });
-        var memory = new TextBox { Header = "Пам’ять (МіБ)", Text = values.memory ?? "", PlaceholderText = "З налаштувань лаунчера" };
-        var java = new TextBox { Header = "Шлях до Java", Text = values.java ?? "", PlaceholderText = "Автоматично" };
+        var memory = new TextBox { Header = Tr("Пам’ять (МіБ)"), Text = values.memory ?? "", PlaceholderText = Tr("З налаштувань лаунчера") };
+        var java = new TextBox { Header = Tr("Шлях до Java"), Text = values.java ?? "", PlaceholderText = Tr("Автоматично") };
         var form = new StackPanel { Spacing = 12 };
         form.Children.Add(memory);
         form.Children.Add(java);
-        if (await Editor("Java та пам’ять профілю", form, "Зберегти").ShowAsync() == ContentDialogResult.Primary)
+        if (await Editor(Tr("Java та пам’ять профілю"), form, Tr("Зберегти")).ShowAsync() == ContentDialogResult.Primary)
             await ApplyProfileChange(new { method = "save_profile_launch_settings", id = profile.id,
-                memory = memory.Text, java = java.Text }, "Налаштування профілю збережено.");
+                memory = memory.Text, java = java.Text }, Tr("Налаштування профілю збережено."));
     });
 
     private Task OpenSettings() => Run(async () =>
@@ -172,7 +174,7 @@ public sealed partial class MainWindow
             !ushort.TryParse(WidthSetting.Text, out var width) || width == 0 ||
             !ushort.TryParse(HeightSetting.Text, out var height) || height == 0)
         {
-            SettingsStatus.Text = "Введіть додатні цілі значення пам’яті та роздільної здатності.";
+            SettingsStatus.Text = Tr("Введіть додатні цілі значення пам’яті та роздільної здатності.");
             return;
         }
 
@@ -184,7 +186,7 @@ public sealed partial class MainWindow
                 var arguments = ArgumentsSetting.Text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
                 var values = new LaunchSettings(memory, FullscreenSetting.IsOn, width, height, arguments);
                 await core.Call<JsonElement>(new { method = "save_launch_settings", values });
-                SettingsStatus.Text = "Налаштування збережено.";
+                SettingsStatus.Text = Tr("Налаштування збережено.");
             }
             catch (Exception error) { SettingsStatus.Text = error.Message; }
             finally { SaveSettingsButton.IsEnabled = true; }

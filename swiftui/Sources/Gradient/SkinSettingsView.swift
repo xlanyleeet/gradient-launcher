@@ -12,30 +12,30 @@ struct SkinSettingsView: View {
 
     var body: some View {
         Form {
-            Text("Скін активного Minecraft-акаунта").font(.title2.bold())
-            Picker("Модель", selection: $variant) {
-                Text("Класична").tag("classic")
-                Text("Тонкі руки").tag("slim")
+            Text(tr("Скін активного Minecraft-акаунта")).font(.title2.bold())
+            Picker(tr("Модель"), selection: $variant) {
+                Text(tr("Класична")).tag("classic")
+                Text(tr("Тонкі руки")).tag("slim")
             }
             .disabled(busy)
             HStack {
-                Button("Вибрати PNG…", action: selectSkin).disabled(busy)
-                Button("Скинути скін і плащ", role: .destructive) { confirmReset = true }
+                Button(tr("Вибрати PNG…"), action: selectSkin).disabled(busy)
+                Button(tr("Скинути скін і плащ"), role: .destructive) { confirmReset = true }
                     .disabled(busy)
             }
             if busy { ProgressView().controlSize(.small) }
             if !status.isEmpty { Text(status) }
-            Button("Закрити") { dismiss() }.keyboardShortcut(.cancelAction)
+            Button(tr("Закрити")) { dismiss() }.keyboardShortcut(.cancelAction)
         }
         .padding(24)
         .frame(width: 470)
-        .confirmationDialog("Скинути скін і плащ?", isPresented: $confirmReset) {
-            Button("Скинути", role: .destructive) {
-                Task { await apply("reset_skin", [:], success: "Скін Minecraft скинуто.") }
+        .confirmationDialog(tr("Скинути скін і плащ?"), isPresented: $confirmReset) {
+            Button(tr("Скинути"), role: .destructive) {
+                Task { await apply("reset_skin", [:], success: tr("Скін Minecraft скинуто.")) }
             }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Скасувати"), role: .cancel) {}
         } message: {
-            Text("Minecraft повернеться до стандартного скіна.")
+            Text(tr("Minecraft повернеться до стандартного скіна."))
         }
     }
 
@@ -45,7 +45,7 @@ struct SkinSettingsView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
             await apply("upload_skin", ["path": url.path, "variant": variant],
-                        success: "Скін Minecraft застосовано.")
+                        success: tr("Скін Minecraft застосовано."))
         }
     }
 

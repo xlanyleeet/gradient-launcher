@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 
+using static Gradient.InterfaceText;
+
 namespace Gradient;
 
 public sealed partial class MainWindow
@@ -88,7 +90,7 @@ public sealed partial class MainWindow
             if (search.Kind == "mod" && search.Profile is null)
             {
                 ClearDiscoverResults();
-                DiscoverStatus.Text = "Спочатку виберіть профіль у бібліотеці.";
+                DiscoverStatus.Text = Tr("Спочатку виберіть профіль у бібліотеці.");
                 return;
             }
             await SearchDiscover(search, 0);
@@ -112,7 +114,7 @@ public sealed partial class MainWindow
 
     private async Task SearchDiscover(SearchSpec search, uint offset)
     {
-        DiscoverStatus.Text = "Шукаємо…";
+        DiscoverStatus.Text = Tr("Шукаємо…");
         ClearDiscoverResults();
         var page = await core.Call<SearchPage>(new
         {
@@ -126,7 +128,7 @@ public sealed partial class MainWindow
         DiscoverResults.ItemsSource = page.hits;
         DiscoverBack.IsEnabled = offset > 0;
         DiscoverMore.IsEnabled = discoverOffset.HasValue;
-        DiscoverStatus.Text = page.hits.Length == 0 ? "Нічого не знайдено." : "";
+        DiscoverStatus.Text = page.hits.Length == 0 ? Tr("Нічого не знайдено.") : "";
     }
 
     private void ClearDiscoverResults()
@@ -149,7 +151,7 @@ public sealed partial class MainWindow
         var input = new TextBox { PlaceholderText = "https://modrinth.com/modpack/…" };
         await DiscoverAction(async () =>
         {
-            if (await Editor("Відкрити посилання Modrinth", input, "Відкрити").ShowAsync() == ContentDialogResult.Primary)
+            if (await Editor(Tr("Відкрити посилання Modrinth"), input, Tr("Відкрити")).ShowAsync() == ContentDialogResult.Primary)
                 await ResolveAndShowLink(input.Text);
         });
     }
@@ -159,7 +161,7 @@ public sealed partial class MainWindow
     private async Task ResolveAndShowLink(string url)
     {
         ShowDiscoverPage();
-        DiscoverStatus.Text = "Відкриваємо посилання…";
+        DiscoverStatus.Text = Tr("Відкриваємо посилання…");
         var linked = await core.Call<LinkedProject>(new { method = "discover", action = "resolve_link", url });
         await ShowProject(linked.id, linked.name, linked.kind,
             linked.kind == "mod" ? SelectedProfile?.id : null, linked.preferred_version);
@@ -167,7 +169,7 @@ public sealed partial class MainWindow
 
     private async Task ShowProject(string id, string name, string kind, string? profile, string? preferredVersion)
     {
-            DiscoverStatus.Text = "Завантажуємо проєкт…";
+            DiscoverStatus.Text = Tr("Завантажуємо проєкт…");
             var details = await core.Call<ProjectDetails>(new
             {
                 method = "discover", action = "project", project = id, kind
@@ -177,17 +179,17 @@ public sealed partial class MainWindow
             {
                 method = "discover", action = "versions", project = id, kind, profile
             });
-            var picker = new ComboBox { Header = "Версія", ItemsSource = versions, DisplayMemberPath = "Label" };
+            var picker = new ComboBox { Header = Tr("Версія"), ItemsSource = versions, DisplayMemberPath = "Label" };
             picker.SelectedItem = preferredVersion is null ? versions.FirstOrDefault() : versions.FirstOrDefault(version => version.id == preferredVersion);
             var content = new StackPanel { Spacing = 10 };
             content.Children.Add(new TextBlock { Text = details.description, TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock
             {
-                Text = $"{details.downloads:N0} завантажень · {details.license} · Оновлено {details.updated}",
+                Text = Tr("{0:N0} завантажень · {1} · Оновлено {2}", details.downloads, details.license, details.updated),
                 TextWrapping = TextWrapping.Wrap
             });
             if (Uri.TryCreate(details.url, UriKind.Absolute, out var projectUri) && projectUri.Scheme == Uri.UriSchemeHttps)
-                content.Children.Add(new HyperlinkButton { Content = "Відкрити на Modrinth", NavigateUri = projectUri });
+                content.Children.Add(new HyperlinkButton { Content = Tr("Відкрити на Modrinth"), NavigateUri = projectUri });
             if (Uri.TryCreate(details.gallery, UriKind.Absolute, out var imageUri) && imageUri.Scheme == Uri.UriSchemeHttps)
                 content.Children.Add(new Image { Source = new BitmapImage(imageUri) { DecodePixelWidth = 700 }, MaxHeight = 180 });
             if (!string.IsNullOrWhiteSpace(details.body))
@@ -197,22 +199,22 @@ public sealed partial class MainWindow
                     Content = new TextBlock { Text = details.body, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap }
                 });
             content.Children.Add(versions.Length == 0
-                ? new TextBlock { Text = needsProfile ? "Виберіть профіль у бібліотеці, щоб установити мод." : "Сумісних версій немає." }
+                ? new TextBlock { Text = needsProfile ? Tr("Виберіть профіль у бібліотеці, щоб установити мод.") : Tr("Сумісних версій немає.") }
                 : picker);
             if (preferredVersion is not null && versions.Length > 0 && picker.SelectedItem is null)
-                content.Children.Add(new TextBlock { Text = "Версія за посиланням недоступна. Можна вибрати іншу." });
-            var dialog = Editor(name, new ScrollViewer { Content = content, MaxHeight = 430 }, "Встановити");
+                content.Children.Add(new TextBlock { Text = Tr("Версія за посиланням недоступна. Можна вибрати іншу.") });
+            var dialog = Editor(name, new ScrollViewer { Content = content, MaxHeight = 430 }, Tr("Встановити"));
             dialog.IsPrimaryButtonEnabled = picker.SelectedItem is not null;
             picker.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = picker.SelectedItem is not null;
             DiscoverStatus.Text = "";
             if (await dialog.ShowAsync() != ContentDialogResult.Primary ||
                 picker.SelectedItem is not DiscoverVersion version) return;
-            DiscoverStatus.Text = "Встановлюємо…";
+            DiscoverStatus.Text = Tr("Встановлюємо…");
             await core.Call<JsonElement>(new
             {
                 method = "discover", action = "install", project = id, version = version.id, kind, profile
             });
             loadedTab = null;
-            DiscoverStatus.Text = kind == "modpack" ? "Модпак додано до черги." : "Мод встановлено.";
+            DiscoverStatus.Text = kind == "modpack" ? Tr("Модпак додано до черги.") : Tr("Мод встановлено.");
     }
 }

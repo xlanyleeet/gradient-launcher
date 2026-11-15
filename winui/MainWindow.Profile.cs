@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
+using static Gradient.InterfaceText;
+
 namespace Gradient;
 
 public sealed partial class MainWindow
@@ -28,7 +30,7 @@ public sealed partial class MainWindow
         if (loadedTab == key && panel.Children.Count > 0) return;
 
         panel.Children.Clear();
-        panel.Children.Add(new TextBlock { Text = "Завантажуємо…" });
+        panel.Children.Add(new TextBlock { Text = Tr("Завантажуємо…") });
         try
         {
             if (content)
@@ -47,7 +49,7 @@ public sealed partial class MainWindow
             }
 
             if (panel.Children.Count == 0)
-                panel.Children.Add(new TextBlock { Text = content ? "Контенту ще немає." : "Світів ще немає." });
+                panel.Children.Add(new TextBlock { Text = content ? Tr("Контенту ще немає.") : Tr("Світів ще немає.") });
             loadedTab = key;
         }
         catch
@@ -60,26 +62,26 @@ public sealed partial class MainWindow
 
     private StackPanel ContentRow(Profile profile, ContentEntry entry)
     {
-        string state = entry.enabled ? "Увімкнено" : "Вимкнено";
-        if (entry.locked || entry.synced) state += " · Керований";
+        string state = entry.enabled ? Tr("Увімкнено") : Tr("Вимкнено");
+        if (entry.locked || entry.synced) state += Tr(" · Керований");
         var row = ProfileRow(entry.name, $"{entry.file} · {entry.kind} · {entry.version ?? "—"} · {state}");
         if (profile.running || profile.quarantined || entry.locked || entry.synced) return row;
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var toggle = new Button { Content = entry.enabled ? "Вимкнути" : "Увімкнути" };
+        var toggle = new Button { Content = entry.enabled ? Tr("Вимкнути") : Tr("Увімкнути") };
         toggle.Click += async (_, _) => await MutateProfile(profile, new
         {
             method = "set_content_enabled", id = profile.id, path = entry.path,
             action = entry.enabled ? "disable" : "enable"
         });
-        var remove = new Button { Content = "Видалити" };
+        var remove = new Button { Content = Tr("Видалити") };
         remove.Click += async (_, _) => await Run(async () =>
         {
             if (SelectedProfile?.id != profile.id) return;
             var dialog = new ContentDialog
             {
-                XamlRoot = Layout.XamlRoot, Title = "Видалити контент?",
-                Content = entry.name, PrimaryButtonText = "Видалити", CloseButtonText = "Скасувати"
+                XamlRoot = Layout.XamlRoot, Title = Tr("Видалити контент?"),
+                Content = entry.name, PrimaryButtonText = Tr("Видалити"), CloseButtonText = Tr("Скасувати")
             };
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
                 await ApplyProfileChange(new { method = "remove_content", id = profile.id, path = entry.path });
@@ -87,14 +89,14 @@ public sealed partial class MainWindow
         actions.Children.Add(toggle);
         if (entry.has_update)
         {
-            var update = new Button { Content = "Оновити" };
+            var update = new Button { Content = Tr("Оновити") };
             update.Click += async (_, _) => await MutateProfile(profile,
                 new { method = "update_content", id = profile.id, path = entry.path });
             actions.Children.Add(update);
         }
         if (entry.can_choose_version)
         {
-            var version = new Button { Content = "Змінити версію" };
+            var version = new Button { Content = Tr("Змінити версію") };
             version.Click += async (_, _) => await ChangeModVersion(profile, entry);
             actions.Children.Add(version);
         }
@@ -110,36 +112,36 @@ public sealed partial class MainWindow
         {
             method = "installed_mod_versions", id = profile.id, path = entry.path
         });
-        var picker = new ComboBox { Header = "Версія", ItemsSource = versions.options, DisplayMemberPath = "Label" };
+        var picker = new ComboBox { Header = Tr("Версія"), ItemsSource = versions.options, DisplayMemberPath = "Label" };
         picker.SelectedItem = versions.options.FirstOrDefault(option => option.id == versions.current_id)
             ?? versions.options.FirstOrDefault();
         var content = new StackPanel { Spacing = 10 };
-        content.Children.Add(new TextBlock { Text = $"Встановлено · {entry.version ?? "—"}" });
+        content.Children.Add(new TextBlock { Text = Tr("Встановлено · {0}", entry.version ?? "—") });
         if (versions.options.Length > 0)
             content.Children.Add(picker);
         else
-            content.Children.Add(new TextBlock { Text = "Сумісних версій немає." });
-        var dialog = Editor(entry.name, content, "Змінити версію");
+            content.Children.Add(new TextBlock { Text = Tr("Сумісних версій немає.") });
+        var dialog = Editor(entry.name, content, Tr("Змінити версію"));
         void Validate() => dialog.IsPrimaryButtonEnabled =
             picker.SelectedItem is DiscoverVersion version && version.id != versions.current_id;
         picker.SelectionChanged += (_, _) => Validate();
         Validate();
         if (await dialog.ShowAsync() == ContentDialogResult.Primary && picker.SelectedItem is DiscoverVersion selected)
             await ApplyProfileChange(new { method = "switch_mod_version", id = profile.id, path = entry.path,
-                version = selected.id }, $"Встановлено версію {selected.name}.");
+                version = selected.id }, Tr("Встановлено версію {0}.", selected.name));
     }, waitForCore: true);
 
     private StackPanel WorldRow(Profile profile, WorldEntry world)
     {
-        var row = ProfileRow(world.name, $"Остання гра · {world.last_played ?? "—"}");
+        var row = ProfileRow(world.name, Tr("Остання гра · {0}", world.last_played ?? "—"));
         if (profile.running || profile.quarantined) return row;
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var play = new Button { Content = "Відкрити світ" };
+        var play = new Button { Content = Tr("Відкрити світ") };
         play.Click += async (_, _) => await MutateProfile(profile, new { method = "open_world", id = profile.id, world = world.id });
-        var backup = new Button { Content = "Резервна копія" };
+        var backup = new Button { Content = Tr("Резервна копія") };
         backup.Click += async (_, _) => await MutateProfile(profile,
             new { method = "backup_world", id = profile.id, world = world.id },
-            "Резервну копію створено.");
+            Tr("Резервну копію створено."));
         actions.Children.Add(play);
         actions.Children.Add(backup);
         row.Children.Add(actions);

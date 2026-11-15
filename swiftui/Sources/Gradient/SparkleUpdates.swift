@@ -17,7 +17,7 @@ final class SparkleUpdates: NSObject, SPUUpdaterDelegate {
 
     func check(using core: CoreClient) async throws {
         guard suspendedCore == nil, controller.updater.canCheckForUpdates else {
-            throw CoreError("Перевірка оновлень уже відкрита.")
+            throw CoreError(tr("Перевірка оновлень уже відкрита."))
         }
         suspendedCore = core
         do {

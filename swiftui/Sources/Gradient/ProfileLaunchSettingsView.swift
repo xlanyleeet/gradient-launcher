@@ -19,16 +19,16 @@ struct ProfileLaunchSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Java та пам’ять профілю").font(.title2.bold())
+            Text(tr("Java та пам’ять профілю")).font(.title2.bold())
             Form {
-                TextField("Пам’ять (МіБ)", text: $memory, prompt: Text("З налаштувань лаунчера"))
-                TextField("Шлях до Java", text: $java, prompt: Text("Автоматично"))
+                TextField(tr("Пам’ять (МіБ)"), text: $memory, prompt: Text(tr("З налаштувань лаунчера")))
+                TextField(tr("Шлях до Java"), text: $java, prompt: Text(tr("Автоматично")))
             }
             if !status.isEmpty { Text(status) }
             HStack {
                 Spacer()
-                Button("Скасувати") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Зберегти") { Task { await save() } }
+                Button(tr("Скасувати")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(tr("Зберегти")) { Task { await save() } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!loaded || busy)
             }

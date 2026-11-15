@@ -26,7 +26,7 @@ struct ProfileGroupsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Групи профілю").font(.title2.bold())
+            Text(tr("Групи профілю")).font(.title2.bold())
             List(groups) { group in
                 Toggle(group.name, isOn: Binding(
                     get: { selected.contains(group.id) },
@@ -34,12 +34,12 @@ struct ProfileGroupsView: View {
                 ))
             }
             .frame(minHeight: 180)
-            TextField("Нова група", text: $name)
+            TextField(tr("Нова група"), text: $name)
             if !status.isEmpty { Text(status) }
             HStack {
                 Spacer()
-                Button("Скасувати") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Зберегти") { Task { await save() } }
+                Button(tr("Скасувати")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(tr("Зберегти")) { Task { await save() } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!loaded || busy)
             }

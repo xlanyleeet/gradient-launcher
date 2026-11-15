@@ -6,6 +6,8 @@ using Windows.Graphics;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
+using static Gradient.InterfaceText;
+
 namespace Gradient;
 
 public sealed partial class MainWindow : Window
@@ -34,6 +36,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InitializeAppearance();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
         Navigation.SelectedItem = LibraryNavigation;
@@ -66,10 +69,10 @@ public sealed partial class MainWindow : Window
         await started.Task;
         await Run(async () =>
         {
-            var dialog = Editor("Імпортувати модпак?", Path.GetFileName(path), "Імпортувати");
+            var dialog = Editor(Tr("Імпортувати модпак?"), Path.GetFileName(path), Tr("Імпортувати"));
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
                 await ApplyProfileChange(new { method = "import", path = Path.GetFullPath(path) },
-                    "Модпак додано до черги.");
+                    Tr("Модпак додано до черги."));
         }, waitForCore: true);
     }
 
@@ -144,20 +147,20 @@ public sealed partial class MainWindow : Window
     private async Task LoadSelected()
     {
         var selected = SelectedProfile;
-        Heading.Text = selected?.name ?? "Бібліотека";
-        Metadata.Text = selected is null ? "Виберіть профіль або імпортуйте модпак."
-            : $"Minecraft {selected.version}   ·   {selected.loader}   ·   Останній запуск  {selected.last_played ?? "—"}";
+        Heading.Text = selected?.name ?? Tr("Бібліотека");
+        Metadata.Text = selected is null ? Tr("Виберіть профіль або імпортуйте модпак.")
+            : Tr("Minecraft {0}   ·   {1}   ·   Останній запуск  {2}", selected.version, selected.loader, selected.last_played ?? "—");
         PlayButton.IsEnabled = selected is { quarantined: false } || selected?.running == true;
         ProfileActions.IsEnabled = selected is not null;
-        PlayButton.Content = selected?.running == true ? "■  Зупинити" : "▶  Грати";
+        PlayButton.Content = selected?.running == true ? Tr("■  Зупинити") : Tr("▶  Грати");
         if (selected is null)
         {
             Cover.Source = new BitmapImage(new Uri("ms-appx:///Assets/Cover.png"));
             coverId = null;
-            GameLog.Text = "Виберіть профіль.";
+            GameLog.Text = Tr("Виберіть профіль.");
             LogPicker.IsEnabled = false;
             logProfileId = null;
-            ClearScreenshots("Виберіть профіль.");
+            ClearScreenshots(Tr("Виберіть профіль."));
             FileList.ItemsSource = null;
             ParentDirectoryButton.IsEnabled = false;
             fileProfile = null;
@@ -207,14 +210,18 @@ public sealed partial class MainWindow : Window
     private void DrawJobs()
     {
         Jobs.Children.Clear();
-        if (jobs.Length == 0) Jobs.Children.Add(new TextBlock { Text = "Черга порожня." });
+        if (jobs.Length == 0) Jobs.Children.Add(new TextBlock { Text = Tr("Черга порожня.") });
         foreach (var job in jobs)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            row.Children.Add(new TextBlock { Text = $"{job.instance_id ?? "Модпак"} · {job.status} · {job.phase}", VerticalAlignment = VerticalAlignment.Center });
-            if (job.can_pause) AddAction(row, job, job.paused ? "resume" : "pause", job.paused ? "Продовжити" : "Пауза");
-            if (job.can_cancel) AddAction(row, job, "cancel", "Скасувати");
-            if (job.status is "failed" or "interrupted") AddAction(row, job, "retry", "Повторити");
+            row.Children.Add(new TextBlock
+            {
+                Text = string.Join(" · ", job.instance_id ?? Tr("Модпак"), InstallLabel(job.status), InstallLabel(job.phase)),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            if (job.can_pause) AddAction(row, job, job.paused ? "resume" : "pause", job.paused ? Tr("Продовжити") : Tr("Пауза"));
+            if (job.can_cancel) AddAction(row, job, "cancel", Tr("Скасувати"));
+            if (job.status is "failed" or "interrupted") AddAction(row, job, "retry", Tr("Повторити"));
             var details = new StackPanel { Spacing = 4 };
             details.Children.Add(row);
             if (job.progress is double progress)
@@ -223,7 +230,7 @@ public sealed partial class MainWindow : Window
                 details.Children.Add(new TextBlock { Text = error, TextWrapping = TextWrapping.Wrap });
             if (job.status is "failed" or "interrupted" or "canceled")
             {
-                var report = new Button { Content = "Діагностика" };
+                var report = new Button { Content = Tr("Діагностика") };
                 report.Click += async (_, _) => await ShowJobDiagnostics(job);
                 details.Children.Add(report);
             }
@@ -235,12 +242,12 @@ public sealed partial class MainWindow : Window
     {
         var report = await core.Call<string>(new { method = "job_diagnostics", id = job.job_id });
         var output = new TextBlock { Text = report, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap };
-        var dialog = Editor("Діагностика встановлення", new ScrollViewer { Content = output, MaxHeight = 420 }, "Копіювати");
+        var dialog = Editor(Tr("Діагностика встановлення"), new ScrollViewer { Content = output, MaxHeight = 420 }, Tr("Копіювати"));
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
         data.SetText(report);
         Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
-        Status.Text = "Звіт скопійовано.";
+        Status.Text = Tr("Звіт скопійовано.");
     }, waitForCore: true);
 
     private void AddAction(StackPanel row, Job job, string action, string label)
@@ -281,7 +288,7 @@ public sealed partial class MainWindow : Window
         if (SelectedProfile is not { } profile) return;
         await Run(async () =>
         {
-            Status.Text = profile.running ? "Зупиняємо Minecraft…" : "Готуємо Minecraft…";
+            Status.Text = profile.running ? Tr("Зупиняємо Minecraft…") : Tr("Готуємо Minecraft…");
             await core.Call<JsonElement>(new { method = profile.running ? "stop" : "play", id = profile.id });
             Status.Text = "";
             await Update();
@@ -296,22 +303,22 @@ public sealed partial class MainWindow : Window
         var file = await picker.PickSingleFileAsync();
         if (file is null) return;
         await core.Call<JsonElement>(new { method = "import", path = file.Path });
-        Status.Text = "Модпак додано до черги.";
+        Status.Text = Tr("Модпак додано до черги.");
         await Update();
     });
 
     private async void Login(object sender, RoutedEventArgs e) => await Run(async () =>
     {
-        var input = new TextBox { PlaceholderText = "Ім’я гравця" };
+        var input = new TextBox { PlaceholderText = Tr("Ім’я гравця") };
         var dialog = new ContentDialog
         {
-            XamlRoot = Layout.XamlRoot, Title = "Офлайн-акаунт", Content = input,
-            PrimaryButtonText = "Зберегти", CloseButtonText = "Скасувати"
+            XamlRoot = Layout.XamlRoot, Title = Tr("Офлайн-акаунт"), Content = input,
+            PrimaryButtonText = Tr("Зберегти"), CloseButtonText = Tr("Скасувати")
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         await core.Call<JsonElement>(new { method = "offline_login", name = input.Text });
         await RefreshAccountAvatar();
-        Status.Text = "Офлайн-акаунт вибрано.";
+        Status.Text = Tr("Офлайн-акаунт вибрано.");
     });
 
     private async void MicrosoftLogin(object sender, RoutedEventArgs e) => await Run(async () =>
@@ -320,8 +327,8 @@ public sealed partial class MainWindow : Window
         var web = new WebView2 { Width = 650, Height = 440 };
         var dialog = new ContentDialog
         {
-            XamlRoot = Layout.XamlRoot, Title = "Увійти в Microsoft", Content = web,
-            CloseButtonText = "Скасувати"
+            XamlRoot = Layout.XamlRoot, Title = Tr("Увійти в Microsoft"), Content = web,
+            CloseButtonText = Tr("Скасувати")
         };
         string? code = null;
         web.NavigationStarting += (_, args) =>
@@ -347,6 +354,6 @@ public sealed partial class MainWindow : Window
         if (code is null) return;
         await core.Call<JsonElement>(new { method = "finish_login", code });
         await RefreshAccountAvatar();
-        Status.Text = "Вхід у Microsoft виконано.";
+        Status.Text = Tr("Вхід у Microsoft виконано.");
     });
 }

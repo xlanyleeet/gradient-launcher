@@ -28,9 +28,9 @@ struct ProfileServersView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button("Додати сервер", systemImage: "plus") { editor = Edit(server: nil, name: "", address: "") }
+            Button(tr("Додати сервер"), systemImage: "plus") { editor = Edit(server: nil, name: "", address: "") }
                 .disabled(busy || !canPlay)
-            if entries.isEmpty && !busy { Text("Серверів ще немає.") }
+            if entries.isEmpty && !busy { Text(tr("Серверів ще немає.")) }
             if busy { ProgressView().controlSize(.small) }
             if !status.isEmpty { Text(status) }
             ForEach(entries) { server in
@@ -38,12 +38,12 @@ struct ProfileServersView: View {
                     Text(server.name).font(.headline)
                     Text(server.address).foregroundStyle(.secondary).textSelection(.enabled)
                     HStack {
-                        Button("Приєднатися") { send("join_server", ["server": server.id]) }
+                        Button(tr("Приєднатися")) { send("join_server", ["server": server.id]) }
                         if server.editable {
-                            Button("Редагувати") {
+                            Button(tr("Редагувати")) {
                                 editor = Edit(server: server.id, name: server.name, address: server.address)
                             }
-                            Button("Видалити") { pendingRemoval = server }
+                            Button(tr("Видалити")) { pendingRemoval = server }
                         }
                     }
                     .disabled(busy || !canPlay)
@@ -59,12 +59,12 @@ struct ProfileServersView: View {
                 send("save_server", arguments)
             }
         }
-        .alert("Видалити сервер?", isPresented: Binding(
+        .alert(tr("Видалити сервер?"), isPresented: Binding(
             get: { pendingRemoval != nil },
             set: { if !$0 { pendingRemoval = nil } }
         ), presenting: pendingRemoval) { entry in
-            Button("Видалити", role: .destructive) { send("remove_server", ["server": entry.id]) }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Видалити"), role: .destructive) { send("remove_server", ["server": entry.id]) }
+            Button(tr("Скасувати"), role: .cancel) {}
         } message: { Text($0.name) }
     }
 
@@ -75,7 +75,7 @@ struct ProfileServersView: View {
     private func send(_ method: String, _ arguments: [String: String]) {
         Task {
             await run {
-                if method == "join_server" { status = "Готуємо Minecraft…" }
+                if method == "join_server" { status = tr("Готуємо Minecraft…") }
                 var values = arguments
                 values["id"] = profileID
                 _ = try await core.call(method, values, as: EmptyReply.self)
@@ -102,15 +102,15 @@ private struct ServerEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Сервер Minecraft").font(.title2.bold())
+            Text(tr("Сервер Minecraft")).font(.title2.bold())
             Form {
-                TextField("Назва", text: $name)
-                TextField("Адреса", text: $address)
+                TextField(tr("Назва"), text: $name)
+                TextField(tr("Адреса"), text: $address)
             }
             HStack {
                 Spacer()
-                Button("Скасувати") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Зберегти") { save(name, address) }
+                Button(tr("Скасувати")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(tr("Зберегти")) { save(name, address) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                               address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

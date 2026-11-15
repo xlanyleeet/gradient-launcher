@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml.Controls;
 
+using static Gradient.InterfaceText;
+
 namespace Gradient;
 
 public sealed partial class MainWindow
@@ -8,8 +10,8 @@ public sealed partial class MainWindow
     {
         public string Label => log_type switch
         {
-            "Live" => "Живий лог",
-            "CrashReport" => $"{filename} · Звіт про збій",
+            "Live" => Tr("Живий лог"),
+            "CrashReport" => Tr("{0} · Звіт про збій", filename),
             _ => filename
         };
     }
@@ -47,7 +49,7 @@ public sealed partial class MainWindow
             : await core.Call<string>(new { method = "read_log", id = profile.id, kind = source.log_type, filename = source.filename });
         if (SelectedProfile?.id == profile.id && Equals(LogPicker.SelectedItem, source))
         {
-            GameLog.Text = string.IsNullOrWhiteSpace(output) ? "Лог порожній." : output;
+            GameLog.Text = string.IsNullOrWhiteSpace(output) ? Tr("Лог порожній.") : output;
             displayedLog = source;
         }
     }

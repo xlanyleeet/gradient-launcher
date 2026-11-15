@@ -48,7 +48,7 @@ struct ProfileTransferView: View {
         VStack(alignment: .leading, spacing: 16) {
             switch operation {
             case let .export(id):
-                Text("Експорт модпаку").font(.title2.bold())
+                Text(tr("Експорт модпаку")).font(.title2.bold())
                 List(candidates) { candidate in
                     Toggle(candidate.path, isOn: Binding(
                         get: { included.contains(candidate.path) },
@@ -57,23 +57,23 @@ struct ProfileTransferView: View {
                     .disabled(candidate.disabled || busy)
                 }
                 .frame(minHeight: 260)
-                controls("Експортувати", disabled: !exportReady) { saveExport(id) }
+                controls(tr("Експортувати"), disabled: !exportReady) { saveExport(id) }
             case .importLauncher:
-                Text("Імпорт з іншого лаунчера").font(.title2.bold())
-                Picker("Лаунчер", selection: $launcher) {
+                Text(tr("Імпорт з іншого лаунчера")).font(.title2.bold())
+                Picker(tr("Лаунчер"), selection: $launcher) {
                     ForEach(["PrismLauncher", "MultiMC", "ATLauncher", "GDLauncher", "Curseforge"], id: \.self) {
                         Text($0).tag($0)
                     }
                 }
                 .disabled(busy)
                 .onChange(of: launcher) { base = nil; folders = []; folder = ""; status = "" }
-                Button("Вибрати папку лаунчера…", action: chooseFolder).disabled(busy)
+                Button(tr("Вибрати папку лаунчера…"), action: chooseFolder).disabled(busy)
                 if !folders.isEmpty {
-                    Picker("Профіль", selection: $folder) {
+                    Picker(tr("Профіль"), selection: $folder) {
                         ForEach(folders, id: \.self) { Text($0).tag($0) }
                     }
                 }
-                controls("Імпортувати", disabled: folder.isEmpty) { importProfile() }
+                controls(tr("Імпортувати"), disabled: folder.isEmpty) { importProfile() }
             }
             if busy { ProgressView().controlSize(.small) }
             if !status.isEmpty { Text(status) }
@@ -93,7 +93,7 @@ struct ProfileTransferView: View {
     private func controls(_ title: String, disabled: Bool, action: @escaping () -> Void) -> some View {
         HStack {
             Spacer()
-            Button("Скасувати") { dismiss() }.keyboardShortcut(.cancelAction).disabled(busy)
+            Button(tr("Скасувати")) { dismiss() }.keyboardShortcut(.cancelAction).disabled(busy)
             Button(title, action: action).keyboardShortcut(.defaultAction).disabled(disabled || busy)
         }
     }
@@ -107,7 +107,7 @@ struct ProfileTransferView: View {
             await run {
                 let request = ExportRequest(id: id, path: url.path, included: included.sorted())
                 _ = try await core.send(request, as: EmptyReply.self)
-                completed("Модпак експортовано.")
+                completed(tr("Модпак експортовано."))
                 dismiss()
             }
         }
@@ -126,7 +126,7 @@ struct ProfileTransferView: View {
                 folders = try await core.call("import_sources", ["launcher": launcher, "base": url.path], as: [String].self)
                 base = url
                 folder = folders.first ?? ""
-                if folders.isEmpty { status = "У цій папці немає профілів для імпорту." }
+                if folders.isEmpty { status = tr("У цій папці немає профілів для імпорту.") }
             }
         }
     }
@@ -136,7 +136,7 @@ struct ProfileTransferView: View {
         Task {
             await run {
                 _ = try await core.call("import_profile", ["launcher": launcher, "base": base.path, "folder": folder], as: EmptyReply.self)
-                completed("Імпорт додано до черги.")
+                completed(tr("Імпорт додано до черги."))
                 dismiss()
             }
         }

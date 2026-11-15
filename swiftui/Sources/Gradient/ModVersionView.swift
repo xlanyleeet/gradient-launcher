@@ -33,25 +33,25 @@ struct ModVersionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(target.name).font(.title2.bold())
-            Text("Встановлено · \(target.version ?? "—")")
+            Text(tr("Встановлено · {0}", String(describing: target.version ?? "—")))
             if let versions, !versions.options.isEmpty {
-                Picker("Версія", selection: $choice) {
+                Picker(tr("Версія"), selection: $choice) {
                     ForEach(versions.options) { option in
                         Text("\(option.name) · \(option.channel)").tag(option.id)
                     }
                 }
                 .disabled(busy)
             } else if versions != nil {
-                Text("Сумісних версій немає.")
+                Text(tr("Сумісних версій немає."))
             }
             if busy { ProgressView().controlSize(.small) }
             if !status.isEmpty { Text(status) }
             HStack {
                 Spacer()
-                Button("Закрити") { dismiss() }
+                Button(tr("Закрити")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(busy && versions != nil)
-                Button("Змінити версію") { Task { await install() } }
+                Button(tr("Змінити версію")) { Task { await install() } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(busy || choice.isEmpty || choice == versions?.current_id)
             }

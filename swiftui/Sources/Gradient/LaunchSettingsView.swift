@@ -15,6 +15,8 @@ private struct SaveLaunchSettings: Encodable {
 
 struct LaunchSettingsView: View {
     let core: CoreClient
+    @AppStorage(InterfacePreferences.themeKey) private var theme = "system"
+    @AppStorage(InterfacePreferences.languageKey) private var language = "uk"
 
     private struct UpdateInfo: Decodable {
         struct Release: Decodable {
@@ -48,42 +50,57 @@ struct LaunchSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Java") {
-                Button("Інсталяції Java…") { showJava = true }
+            Section(tr("Вигляд і мова")) {
+                Picker(tr("Тема"), selection: $theme) {
+                    Text(tr("Системна")).tag("system")
+                    Text(tr("Світла")).tag("light")
+                    Text(tr("Темна")).tag("dark")
+                }
+                Picker(tr("Мова"), selection: $language) {
+                    Text(verbatim: "Українська").tag("uk")
+                    Text(verbatim: "English").tag("en")
+                }
+                if language != InterfacePreferences.language {
+                    Text(tr("Перезапустіть Gradient, щоб змінити мову."))
+                        .foregroundStyle(.secondary)
+                }
             }
-            Section("Оновлення Gradient") {
-                Button("Перевірити оновлення") { Task { await checkForUpdate() } }
+            Section("Java") {
+                Button(tr("Інсталяції Java…")) { showJava = true }
+            }
+            Section(tr("Оновлення Gradient")) {
+                Button(tr("Перевірити оновлення")) { Task { await checkForUpdate() } }
                     .disabled(checkingUpdate)
                 if checkingUpdate {
-                    ProgressView("Перевіряємо оновлення…").controlSize(.small)
+                    ProgressView(tr("Перевіряємо оновлення…")).controlSize(.small)
                 } else if let updateInfo {
-                    Text("Встановлено \(updateInfo.installed).")
+                    Text(tr("Встановлено {0}.", String(describing: updateInfo.installed)))
                     if let release = updateInfo.available {
-                        Link("Завантажити \(release.version)", destination: release.download_url)
+                        Link(tr("Завантажити {0}", String(describing: release.version)), destination: release.download_url)
                     } else {
-                        Text("Новішого релізу для цієї платформи немає.")
+                        Text(tr("Новішого релізу для цієї платформи немає."))
                     }
                 } else if let updateError {
                     Text(updateError)
                 }
             }
-            Section("Пам’ять і вікно гри") {
-                TextField("Максимум пам’яті (МіБ)", text: $memory)
-                Toggle("На весь екран", isOn: $fullscreen)
-                TextField("Ширина (пкс)", text: $width)
-                TextField("Висота (пкс)", text: $height)
+            Section(tr("Пам’ять і вікно гри")) {
+                TextField(tr("Максимум пам’яті (МіБ)"), text: $memory)
+                Toggle(tr("На весь екран"), isOn: $fullscreen)
+                TextField(tr("Ширина (пкс)"), text: $width)
+                TextField(tr("Висота (пкс)"), text: $height)
             }
-            Section("Аргументи JVM") {
+            Section(tr("Аргументи JVM")) {
                 TextEditor(text: $arguments)
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 90)
-                    .accessibilityLabel("Аргументи JVM")
-                Text("Один аргумент на рядок.").font(.caption).foregroundStyle(.secondary)
+                    .accessibilityLabel(Text(tr("Аргументи JVM")))
+                Text(tr("Один аргумент на рядок.")).font(.caption).foregroundStyle(.secondary)
             }
             HStack {
-                Button("Перечитати") { Task { await load() } }
+                Button(tr("Перечитати")) { Task { await load() } }
                     .disabled(busy)
-                Button("Зберегти") { Task { await save() } }
+                Button(tr("Зберегти")) { Task { await save() } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!loaded || busy || values == nil)
             }
@@ -135,7 +152,7 @@ struct LaunchSettingsView: View {
         defer { busy = false }
         do {
             _ = try await core.send(SaveLaunchSettings(values: values), as: EmptyReply.self)
-            status = "Налаштування збережено."
+            status = tr("Налаштування збережено.")
         } catch {
             status = error.localizedDescription
         }

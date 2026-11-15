@@ -27,7 +27,7 @@ struct ProfileFilesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Button("На рівень вище", systemImage: "arrow.up") {
+                Button(tr("На рівень вище"), systemImage: "arrow.up") {
                     let parent = directory.split(separator: "/").dropLast().joined(separator: "/")
                     Task { await load(parent) }
                 }
@@ -36,7 +36,7 @@ struct ProfileFilesView: View {
                     .textSelection(.enabled)
             }
             if busy { ProgressView().controlSize(.small) }
-            if entries.isEmpty && !busy && status.isEmpty { Text("Порожня папка.") }
+            if entries.isEmpty && !busy && status.isEmpty { Text(tr("Порожня папка.")) }
             if !status.isEmpty { Text(status) }
             ForEach(entries) { entry in
                 Button {
@@ -56,7 +56,7 @@ struct ProfileFilesView: View {
                     TextEditor(text: $preview)
                         .font(.system(.body, design: .monospaced))
                         .frame(height: 260)
-                        .accessibilityLabel("Вміст файлу")
+                        .accessibilityLabel(Text(tr("Вміст файлу")))
                 } else {
                     ScrollView {
                         Text(preview).font(.system(.body, design: .monospaced)).textSelection(.enabled)
@@ -67,10 +67,10 @@ struct ProfileFilesView: View {
                 if !editStatus.isEmpty { Text(editStatus) }
                 HStack {
                     Spacer()
-                    Button("Закрити") { selected = nil }.keyboardShortcut(.cancelAction)
-                    Button("Зберегти копію") { save(entry) }.disabled(busy)
+                    Button(tr("Закрити")) { selected = nil }.keyboardShortcut(.cancelAction)
+                    Button(tr("Зберегти копію")) { save(entry) }.disabled(busy)
                     if let original, !entry.readOnly && editableProfile {
-                        Button("Зберегти зміни") { saveText(entry, before: original) }
+                        Button(tr("Зберегти зміни")) { saveText(entry, before: original) }
                             .keyboardShortcut(.defaultAction)
                             .disabled(busy || preview == original)
                     }
@@ -120,7 +120,7 @@ struct ProfileFilesView: View {
                 _ = try await core.call("copy_file", ["id": profileID, "path": entry.path,
                                                      "destination": destination.path], as: EmptyReply.self)
                 selected = nil
-                status = "Копію файлу збережено."
+                status = tr("Копію файлу збережено.")
             } catch { editStatus = error.localizedDescription }
         }
     }
@@ -134,7 +134,7 @@ struct ProfileFilesView: View {
                     "id": profileID, "path": entry.path, "before": before, "text": preview
                 ], as: EmptyReply.self)
                 selected = nil
-                status = "Файл збережено."
+                status = tr("Файл збережено.")
             } catch { editStatus = error.localizedDescription }
         }
     }

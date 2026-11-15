@@ -6,16 +6,19 @@ import WebKit
 @main
 struct GradientApp: App {
     @State private var core = CoreClient()
+    @AppStorage(InterfacePreferences.themeKey) private var theme = "system"
 
     var body: some Scene {
         Window("Gradient Launcher", id: "launcher") {
             LauncherView(core: core)
                 .frame(minWidth: 760, minHeight: 560)
+                .preferredColorScheme(InterfacePreferences.colorScheme(for: theme))
         }
         .defaultSize(width: 1120, height: 740)
 
         Settings {
             LaunchSettingsView(core: core)
+                .preferredColorScheme(InterfacePreferences.colorScheme(for: theme))
         }
     }
 }
@@ -96,7 +99,7 @@ private struct ArchivedLog: Decodable, Hashable {
     let log_type: String
 
     var label: String {
-        log_type == "CrashReport" ? "\(filename) · Звіт про збій" : filename
+        log_type == "CrashReport" ? tr("{0} · Звіт про збій", String(describing: filename)) : filename
     }
 }
 
@@ -108,8 +111,11 @@ private struct Screenshot: Decodable, Identifiable {
 
 private struct LauncherView: View {
     let core: CoreClient
-    private let tint = Color(red: 0.66, green: 0.87, blue: 0.84)
-    private let ink = Color(red: 0.07, green: 0.17, blue: 0.17)
+    @Environment(\.colorScheme) private var colorScheme
+    private var tint: Color {
+        colorScheme == .dark ? Color(red: 0.09, green: 0.18, blue: 0.20)
+            : Color(red: 0.66, green: 0.87, blue: 0.84)
+    }
 
     @State private var profiles: [Profile] = []
     @State private var jobs: [Job] = []
@@ -165,10 +171,10 @@ private struct LauncherView: View {
         NavigationSplitView {
             List(selection: $selectedID) {
                 Section {
-                    Button("Каталог Modrinth", systemImage: "magnifyingglass") { showDiscover = true }
+                    Button(tr("Каталог Modrinth"), systemImage: "magnifyingglass") { showDiscover = true }
                         .buttonStyle(.plain)
                 }
-                Section("Профілі") {
+                Section(tr("Профілі")) {
                     ForEach(filteredProfiles) { entry in
                         Label {
                             Text(entry.name)
@@ -187,10 +193,10 @@ private struct LauncherView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 218)
             .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Button("Акаунти", systemImage: "person.2", action: showAccounts)
-                    Button("Скін Minecraft", systemImage: "person.crop.square") { skinSettings = true }
-                    Button("Увійти в Microsoft", systemImage: "person.crop.circle", action: beginMicrosoft)
-                    Button("Офлайн-акаунт", systemImage: "person") { showLogin = true }
+                    Button(tr("Акаунти"), systemImage: "person.2", action: showAccounts)
+                    Button(tr("Скін Minecraft"), systemImage: "person.crop.square") { skinSettings = true }
+                    Button(tr("Увійти в Microsoft"), systemImage: "person.crop.circle", action: beginMicrosoft)
+                    Button(tr("Офлайн-акаунт"), systemImage: "person") { showLogin = true }
                 }
                     .padding(12)
             }
@@ -200,7 +206,7 @@ private struct LauncherView: View {
                     loadedTab = nil
                 }
                 .toolbar {
-                    Button("До бібліотеки", systemImage: "chevron.left") { showDiscover = false }
+                    Button(tr("До бібліотеки"), systemImage: "chevron.left") { showDiscover = false }
                 }
             } else {
             ScrollView {
@@ -209,14 +215,14 @@ private struct LauncherView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Divider()
                         Text(profile.map {
-                            "Minecraft \($0.version)   ·   \($0.loader)   ·   Останній запуск  \($0.last_played ?? "—")"
-                        } ?? "Виберіть профіль або імпортуйте модпак.")
+                            tr("Minecraft {0}   ·   {1}   ·   Останній запуск  {2}", String(describing: $0.version), String(describing: $0.loader), String(describing: $0.last_played ?? "—"))
+                        } ?? tr("Виберіть профіль або імпортуйте модпак."))
                         .font(.callout)
                         Divider()
                         if !status.isEmpty { Text(status).font(.callout) }
-                        Picker("Деталі", selection: $tab) {
+                        Picker(tr("Деталі"), selection: $tab) {
                             ForEach(ProfileTab.allCases, id: \.self) { item in
-                                Text(item.rawValue).tag(item)
+                                Text(tr(item.rawValue)).tag(item)
                             }
                         }
                         .labelsHidden()
@@ -228,13 +234,11 @@ private struct LauncherView: View {
                 }
             }
             .background(tint)
-            .foregroundStyle(ink)
-            .preferredColorScheme(.light)
             .toolbar {
-                Button("Новий профіль", systemImage: "plus.square", action: beginCreateProfile)
-                Button("Імпортувати .mrpack", systemImage: "plus", action: importPack)
-                Button("Імпорт з лаунчера", systemImage: "folder.badge.plus") { transfer = .importLauncher }
-                Button("Оновити", systemImage: "arrow.clockwise") {
+                Button(tr("Новий профіль"), systemImage: "plus.square", action: beginCreateProfile)
+                Button(tr("Імпортувати .mrpack"), systemImage: "plus", action: importPack)
+                Button(tr("Імпорт з лаунчера"), systemImage: "folder.badge.plus") { transfer = .importLauncher }
+                Button(tr("Оновити"), systemImage: "arrow.clockwise") {
                     coverKey = nil
                     loadedTab = nil
                     logProfile = nil
@@ -244,7 +248,7 @@ private struct LauncherView: View {
             }
             }
         }
-        .searchable(text: $search, prompt: "Пошук профілів")
+        .searchable(text: $search, prompt: Text(tr("Пошук профілів")))
         .task {
             while !Task.isCancelled {
                 if !(await core.isSuspendedForUpdate) { await perform(refresh) }
@@ -269,13 +273,13 @@ private struct LauncherView: View {
                 showDiscover = true
             }
         }
-        .confirmationDialog("Запустити Minecraft?", isPresented: Binding(
+        .confirmationDialog(tr("Запустити Minecraft?"), isPresented: Binding(
             get: { shortcutProfile != nil },
             set: { if !$0 { shortcutProfile = nil } }
         ), presenting: shortcutProfile) { entry in
-            Button("Грати") {
+            Button(tr("Грати")) {
                 Task {
-                    status = "Готуємо Minecraft…"
+                    status = tr("Готуємо Minecraft…")
                     do {
                         _ = try await core.call("play", ["id": entry.id], as: EmptyReply.self)
                         status = ""
@@ -283,22 +287,22 @@ private struct LauncherView: View {
                     } catch { status = error.localizedDescription }
                 }
             }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Скасувати"), role: .cancel) {}
         } message: { Text($0.name) }
-        .confirmationDialog("Імпортувати модпак?", isPresented: Binding(
+        .confirmationDialog(tr("Імпортувати модпак?"), isPresented: Binding(
             get: { pendingPack != nil },
             set: { if !$0 { pendingPack = nil } }
         ), presenting: pendingPack) { url in
-            Button("Імпортувати") {
+            Button(tr("Імпортувати")) {
                 Task {
                     do {
                         _ = try await core.call("import", ["path": url.path], as: EmptyReply.self)
-                        status = "Модпак додано до черги."
+                        status = tr("Модпак додано до черги.")
                         await perform(refresh)
                     } catch { status = error.localizedDescription }
                 }
             }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Скасувати"), role: .cancel) {}
         } message: { Text($0.lastPathComponent) }
         .onChange(of: selectedID) {
             if catalogLink == nil { showDiscover = false }
@@ -311,29 +315,29 @@ private struct LauncherView: View {
             Task { await perform(loadSelection) }
         }
         .onChange(of: selectedScreenshot) { updateScreenshotPreview() }
-        .confirmationDialog("Видалити контент?", isPresented: Binding(
+        .confirmationDialog(tr("Видалити контент?"), isPresented: Binding(
             get: { pendingRemoval != nil },
             set: { if !$0 { pendingRemoval = nil } }
         ), presenting: pendingRemoval) { removal in
-            Button("Видалити", role: .destructive) {
+            Button(tr("Видалити"), role: .destructive) {
                 mutate("remove_content", ["id": removal.profileID, "path": removal.entry.path])
             }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Скасувати"), role: .cancel) {}
         } message: { removal in
             Text(removal.entry.name)
         }
-        .alert("Офлайн-акаунт", isPresented: $showLogin) {
-            TextField("Ім’я гравця", text: $nickname)
-            Button("Зберегти") {
-                mutate("offline_login", ["name": nickname], message: "Офлайн-акаунт вибрано.")
+        .alert(tr("Офлайн-акаунт"), isPresented: $showLogin) {
+            TextField(tr("Ім’я гравця"), text: $nickname)
+            Button(tr("Зберегти")) {
+                mutate("offline_login", ["name": nickname], message: tr("Офлайн-акаунт вибрано."))
             }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Скасувати"), role: .cancel) {}
         }
         .sheet(isPresented: $showMicrosoft, onDismiss: cancelMicrosoft) {
             if let loginURL {
                 VStack {
                     MicrosoftWebView(url: loginURL, complete: completeMicrosoft)
-                    Button("Скасувати") { showMicrosoft = false }
+                    Button(tr("Скасувати")) { showMicrosoft = false }
                         .padding(.bottom, 12)
                 }
                 .frame(width: 680, height: 550)
@@ -342,7 +346,7 @@ private struct LauncherView: View {
         .sheet(item: $librarySheet) { sheet in
             if sheet == .launch, let editedProfile {
                 ProfileLaunchSettingsView(core: core, profileID: editedProfile.id) {
-                    status = "Налаштування профілю збережено."
+                    status = tr("Налаштування профілю збережено.")
                 }
             } else if sheet == .groups, let editedProfile {
                 ProfileGroupsView(core: core, profileID: editedProfile.id)
@@ -356,21 +360,21 @@ private struct LauncherView: View {
         .sheet(item: $modVersion) { target in
             ModVersionView(core: core, target: target) {
                 loadedTab = nil
-                status = "Версію мода змінено."
+                status = tr("Версію мода змінено.")
             }
         }
         .sheet(item: $diagnosticsJob) { job in
             JobDiagnosticsView(core: core, jobID: job.id)
         }
         .sheet(isPresented: $skinSettings) { SkinSettingsView(core: core) }
-        .alert("Видалити профіль?", isPresented: Binding(
+        .alert(tr("Видалити профіль?"), isPresented: Binding(
             get: { profileToRemove != nil },
             set: { if !$0 { profileToRemove = nil } }
         ), presenting: profileToRemove) { entry in
-            Button("Видалити", role: .destructive) { mutate("remove_profile", ["id": entry.id]) }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Видалити"), role: .destructive) { mutate("remove_profile", ["id": entry.id]) }
+            Button(tr("Скасувати"), role: .cancel) {}
         } message: { entry in
-            Text("«\(entry.name)» і його локальні файли буде видалено.")
+            Text(tr("«{0}» і його локальні файли буде видалено.", String(describing: entry.name)))
         }
     }
 
@@ -381,39 +385,39 @@ private struct LauncherView: View {
     @ViewBuilder private var tabContent: some View {
         switch tab {
         case .queue:
-            if jobs.isEmpty { Text("Черга порожня.") }
+            if jobs.isEmpty { Text(tr("Черга порожня.")) }
             ForEach(jobs) { job in jobRow(job) }
         case .log:
             if profile == nil {
-                Text("Виберіть профіль.")
+                Text(tr("Виберіть профіль."))
             } else {
-                Picker("Джерело логу", selection: $selectedLog) {
-                    Text("Живий лог").tag(nil as ArchivedLog?)
+                Picker(tr("Джерело логу"), selection: $selectedLog) {
+                    Text(tr("Живий лог")).tag(nil as ArchivedLog?)
                     ForEach(archivedLogs, id: \.self) { source in
                         Text(source.label).tag(Optional(source))
                     }
                 }
-                Text(log.isEmpty ? "Лог порожній." : log)
+                Text(log.isEmpty ? tr("Лог порожній.") : log)
                     .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
             }
         case .content, .worlds:
             if let profile {
                 if tab == .content {
-                    Button("Додати .jar", systemImage: "plus") { addMod(profile) }
+                    Button(tr("Додати .jar"), systemImage: "plus") { addMod(profile) }
                         .disabled(busy || profile.running || profile.quarantined)
                 }
                 if loadedTab != tabKey(profile, tab) {
                     ProgressView()
                 } else if tab == .content {
-                    if content.isEmpty { Text("Контенту ще немає.") }
+                    if content.isEmpty { Text(tr("Контенту ще немає.")) }
                     ForEach(content) { entry in contentRow(profile, entry) }
                 } else {
-                    if worlds.isEmpty { Text("Світів ще немає.") }
+                    if worlds.isEmpty { Text(tr("Світів ще немає.")) }
                     ForEach(worlds) { world in worldRow(profile, world) }
                 }
             } else {
-                Text("Виберіть профіль.")
+                Text(tr("Виберіть профіль."))
             }
         case .screenshots:
             if let profile {
@@ -423,14 +427,14 @@ private struct LauncherView: View {
                     screenshotGallery(profile)
                 }
             } else {
-                Text("Виберіть профіль.")
+                Text(tr("Виберіть профіль."))
             }
         case .files:
             if let profile {
                 ProfileFilesView(core: core, profileID: profile.id, refresh: fileRefresh,
                                  editableProfile: !profile.running && !profile.quarantined).id(profile.id)
             } else {
-                Text("Виберіть профіль.")
+                Text(tr("Виберіть профіль."))
             }
         case .servers:
             if let profile {
@@ -438,26 +442,26 @@ private struct LauncherView: View {
                                    canPlay: !profile.running && !profile.quarantined,
                                    refresh: fileRefresh).id(profile.id)
             } else {
-                Text("Виберіть профіль.")
+                Text(tr("Виберіть профіль."))
             }
         }
     }
 
     @ViewBuilder private func screenshotGallery(_ profile: Profile) -> some View {
         if screenshots.isEmpty {
-            Text("Скриншотів ще немає.")
+            Text(tr("Скриншотів ще немає."))
         } else {
             HStack {
-                Picker("Скриншот", selection: $selectedScreenshot) {
+                Picker(tr("Скриншот"), selection: $selectedScreenshot) {
                     ForEach(screenshots) { shot in Text(shot.filename).tag(shot.id) }
                 }
-                Button("Експортувати всі у ZIP", systemImage: "square.and.arrow.up") {
+                Button(tr("Експортувати всі у ZIP"), systemImage: "square.and.arrow.up") {
                     let panel = NSSavePanel()
                     panel.allowedContentTypes = [.zip]
                     panel.nameFieldStringValue = "screenshots.zip"
                     guard panel.runModal() == .OK, let url = panel.url else { return }
                     mutate("export_screenshots", ["id": profile.id, "path": url.path],
-                           message: "Архів збережено.")
+                           message: tr("Архів збережено."))
                 }
                 .disabled(busy)
             }
@@ -468,7 +472,7 @@ private struct LauncherView: View {
                     .frame(maxHeight: 440)
                     .accessibilityLabel(Text(selectedScreenshot))
             } else {
-                Text("Файл скриншота недоступний.")
+                Text(tr("Файл скриншота недоступний."))
             }
         }
     }
@@ -481,24 +485,24 @@ private struct LauncherView: View {
     private func contentRow(_ profile: Profile, _ entry: ContentEntry) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(entry.name).font(.headline)
-            let state = entry.enabled ? "Увімкнено" : "Вимкнено"
-            let managed = entry.locked || entry.synced ? " · Керований" : ""
+            let state = entry.enabled ? tr("Увімкнено") : tr("Вимкнено")
+            let managed = entry.locked || entry.synced ? tr(" · Керований") : ""
             Text("\(entry.file) · \(entry.kind) · \(entry.version ?? "—") · \(state)\(managed)")
                 .font(.callout)
             if !profile.running && !profile.quarantined && !entry.locked && !entry.synced {
                 HStack {
-                    Button(entry.enabled ? "Вимкнути" : "Увімкнути") {
+                    Button(entry.enabled ? tr("Вимкнути") : tr("Увімкнути")) {
                         mutate("set_content_enabled", [
                             "id": profile.id, "path": entry.path,
                             "action": entry.enabled ? "disable" : "enable"
                         ])
                     }
-                    Button("Видалити") { pendingRemoval = (profile.id, entry) }
+                    Button(tr("Видалити")) { pendingRemoval = (profile.id, entry) }
                     if entry.has_update {
-                        Button("Оновити") { mutate("update_content", ["id": profile.id, "path": entry.path]) }
+                        Button(tr("Оновити")) { mutate("update_content", ["id": profile.id, "path": entry.path]) }
                     }
                     if entry.can_choose_version {
-                        Button("Змінити версію") {
+                        Button(tr("Змінити версію")) {
                             modVersion = .init(profileID: profile.id, path: entry.path,
                                                name: entry.name, version: entry.version)
                         }
@@ -513,15 +517,15 @@ private struct LauncherView: View {
     private func worldRow(_ profile: Profile, _ world: WorldEntry) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(world.name).font(.headline)
-            Text("Остання гра · \(world.last_played ?? "—")").font(.callout)
+            Text(tr("Остання гра · {0}", String(describing: world.last_played ?? "—"))).font(.callout)
             if !profile.running && !profile.quarantined {
                 HStack {
-                    Button("Відкрити світ") {
+                    Button(tr("Відкрити світ")) {
                         mutate("open_world", ["id": profile.id, "world": world.id])
                     }
-                    Button("Резервна копія") {
+                    Button(tr("Резервна копія")) {
                         mutate("backup_world", ["id": profile.id, "world": world.id],
-                               message: "Резервну копію створено.")
+                               message: tr("Резервну копію створено."))
                     }
                 }
                 .disabled(busy)
@@ -554,7 +558,7 @@ private struct LauncherView: View {
                     .init(color: tint, location: 1)
                 ], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 11) {
-                    Text(profile?.name ?? "Бібліотека")
+                    Text(profile?.name ?? tr("Бібліотека"))
                         .font(.system(size: 42, weight: .bold))
                         .lineLimit(2)
                     HStack(spacing: 8) {
@@ -562,13 +566,12 @@ private struct LauncherView: View {
                             guard let profile else { return }
                             mutate(profile.running ? "stop" : "play", ["id": profile.id])
                         } label: {
-                            Label(profile?.running == true ? "Зупинити" : "Грати",
+                            Label(profile?.running == true ? tr("Зупинити") : tr("Грати"),
                                   systemImage: profile?.running == true ? "stop.fill" : "play.fill")
                             .padding(.horizontal, 12)
                             .padding(.vertical, 5)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(ink)
                         .buttonBorderShape(.capsule)
                         .disabled(busy || profile == nil || (profile?.quarantined == true && profile?.running != true))
                         if let profile { profileMenu(profile) }
@@ -587,47 +590,47 @@ private struct LauncherView: View {
     }
 
     private func profileMenu(_ profile: Profile) -> some View {
-        Menu("Дії профілю") {
-            Button("Перейменувати") {
+        Menu(tr("Дії профілю")) {
+            Button(tr("Перейменувати")) {
                 editedProfile = profile
                 profileName = profile.name
                 librarySheet = .rename
             }
-            Button("Змінити іконку") {
+            Button(tr("Змінити іконку")) {
                 let panel = NSOpenPanel()
                 panel.allowedContentTypes = [.png, .jpeg, .webP]
                 if panel.runModal() == .OK, let url = panel.url {
                     mutate("profile_icon", ["id": profile.id, "path": url.path])
                 }
             }
-            Button("Java та пам’ять") {
+            Button(tr("Java та пам’ять")) {
                 editedProfile = profile
                 librarySheet = .launch
             }
             .disabled(profile.running)
-            Button("Групи профілю") {
+            Button(tr("Групи профілю")) {
                 editedProfile = profile
                 librarySheet = .groups
             }
-            Button("Дублювати") {
-                mutate("duplicate_profile", ["id": profile.id], message: "Дублювання додано до черги.")
+            Button(tr("Дублювати")) {
+                mutate("duplicate_profile", ["id": profile.id], message: tr("Дублювання додано до черги."))
             }
             .disabled(profile.running)
-            Button("Експортувати .mrpack") { transfer = .export(profile.id) }
+            Button(tr("Експортувати .mrpack")) { transfer = .export(profile.id) }
                 .disabled(profile.running)
-            Button("Відкрити папку профілю") {
+            Button(tr("Відкрити папку профілю")) {
                 Task {
                     await perform {
                         let path = try await core.call("profile_folder", ["id": profile.id], as: String.self)
                         if !NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true)) {
-                            status = "Не вдалося відкрити папку профілю."
+                            status = tr("Не вдалося відкрити папку профілю.")
                         }
                     }
                 }
             }
-            Button("Створити ярлик") { createProfileShortcut(profile) }
+            Button(tr("Створити ярлик")) { createProfileShortcut(profile) }
             Divider()
-            Button("Видалити профіль", role: .destructive) { profileToRemove = profile }
+            Button(tr("Видалити профіль"), role: .destructive) { profileToRemove = profile }
                 .disabled(profile.running)
         }
         .fixedSize()
@@ -645,7 +648,7 @@ private struct LauncherView: View {
                 let link = try await core.call("create_profile_shortcut", ["id": profile.id], as: String.self)
                 let data = try PropertyListSerialization.data(fromPropertyList: ["URL": link], format: .xml, options: 0)
                 try data.write(to: destination, options: .atomic)
-                status = "Ярлик профілю збережено."
+                status = tr("Ярлик профілю збережено.")
             } catch { status = error.localizedDescription }
         }
     }
@@ -658,9 +661,9 @@ private struct LauncherView: View {
             search = ""
             selectedID = target.id
             if target.quarantined {
-                status = "Цей профіль заблоковано."
+                status = tr("Цей профіль заблоковано.")
             } else if profile?.running == true {
-                status = "Minecraft уже запущено."
+                status = tr("Minecraft уже запущено.")
             } else {
                 shortcutProfile = target
             }
@@ -692,34 +695,34 @@ private struct LauncherView: View {
     @ViewBuilder private func libraryEditor(_ sheet: LibrarySheet) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             if sheet == .accounts {
-                Text("Акаунти Minecraft").font(.title2.bold())
-                if accounts.isEmpty { Text("Увійдіть у Microsoft або додайте офлайн-акаунт.") }
+                Text(tr("Акаунти Minecraft")).font(.title2.bold())
+                if accounts.isEmpty { Text(tr("Увійдіть у Microsoft або додайте офлайн-акаунт.")) }
                 ForEach(accounts) { account in
                     HStack {
                         Text(account.name)
                         Spacer()
                         if account.selected {
-                            Label("Основний", systemImage: "checkmark")
+                            Label(tr("Основний"), systemImage: "checkmark")
                         } else {
-                            Button("Зробити основним") {
+                            Button(tr("Зробити основним")) {
                                 librarySheet = nil
-                                mutate("use_account", ["id": account.id], message: "Основний акаунт · \(account.name)")
+                                mutate("use_account", ["id": account.id], message: tr("Основний акаунт · {0}", String(describing: account.name)))
                             }
                         }
-                        Button("Видалити") { accountToRemove = account }
+                        Button(tr("Видалити")) { accountToRemove = account }
                     }
                 }
-                Button("Готово") { librarySheet = nil }.keyboardShortcut(.defaultAction)
+                Button(tr("Готово")) { librarySheet = nil }.keyboardShortcut(.defaultAction)
             } else {
-                Text(sheet == .create ? "Новий профіль" : "Перейменувати профіль").font(.title2.bold())
+                Text(sheet == .create ? tr("Новий профіль") : tr("Перейменувати профіль")).font(.title2.bold())
                 Form {
-                    TextField("Назва", text: $profileName)
+                    TextField(tr("Назва"), text: $profileName)
                     if sheet == .create {
                         Picker("Minecraft", selection: $version) {
-                            if versions.isEmpty { Text("Версій немає").tag("") }
+                            if versions.isEmpty { Text(tr("Версій немає")).tag("") }
                             ForEach(versions, id: \.self) { Text($0).tag($0) }
                         }
-                        Picker("Завантажувач", selection: $loader) {
+                        Picker(tr("Завантажувач"), selection: $loader) {
                             Text("Vanilla").tag("vanilla")
                             Text("Fabric").tag("fabric")
                             Text("Forge").tag("forge")
@@ -730,12 +733,12 @@ private struct LauncherView: View {
                 }
                 HStack {
                     Spacer()
-                    Button("Скасувати") { librarySheet = nil }.keyboardShortcut(.cancelAction)
-                    Button(sheet == .create ? "Створити" : "Зберегти") {
+                    Button(tr("Скасувати")) { librarySheet = nil }.keyboardShortcut(.cancelAction)
+                    Button(sheet == .create ? tr("Створити") : tr("Зберегти")) {
                         librarySheet = nil
                         if sheet == .create {
                             mutate("create_profile", ["name": profileName, "version": version, "loader": loader],
-                                   message: "Профіль додано до черги.")
+                                   message: tr("Профіль додано до черги."))
                         } else if let editedProfile {
                             mutate("rename_profile", ["id": editedProfile.id, "name": profileName])
                         }
@@ -748,15 +751,15 @@ private struct LauncherView: View {
         }
         .padding(24)
         .frame(minWidth: 450)
-        .alert("Видалити акаунт?", isPresented: Binding(
+        .alert(tr("Видалити акаунт?"), isPresented: Binding(
             get: { accountToRemove != nil },
             set: { if !$0 { accountToRemove = nil } }
         ), presenting: accountToRemove) { account in
-            Button("Видалити", role: .destructive) {
+            Button(tr("Видалити"), role: .destructive) {
                 librarySheet = nil
                 mutate("remove_account", ["id": account.id])
             }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Скасувати"), role: .cancel) {}
         } message: { account in
             Text(account.name)
         }
@@ -765,20 +768,22 @@ private struct LauncherView: View {
     private func jobRow(_ job: Job) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("\(job.instance_id ?? "Модпак") · \(job.status) · \(job.phase)")
+                Text([job.instance_id ?? tr("Модпак"),
+                      InterfacePreferences.installLabel(job.status), InterfacePreferences.installLabel(job.phase)]
+                    .joined(separator: " · "))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if job.can_pause {
-                    jobAction(job, job.paused ? "resume" : "pause", job.paused ? "Продовжити" : "Пауза")
+                    jobAction(job, job.paused ? "resume" : "pause", job.paused ? tr("Продовжити") : tr("Пауза"))
                 }
-                if job.can_cancel { jobAction(job, "cancel", "Скасувати") }
+                if job.can_cancel { jobAction(job, "cancel", tr("Скасувати")) }
                 if ["failed", "interrupted"].contains(job.status) {
-                    jobAction(job, "retry", "Повторити")
+                    jobAction(job, "retry", tr("Повторити"))
                 }
             }
             if let progress = job.progress { ProgressView(value: progress) }
             if let error = job.error { Text(error).font(.callout) }
             if ["failed", "interrupted", "canceled"].contains(job.status) {
-                Button("Діагностика") { diagnosticsJob = job }
+                Button(tr("Діагностика")) { diagnosticsJob = job }
             }
         }
         .padding(.vertical, 4)
@@ -880,7 +885,7 @@ private struct LauncherView: View {
     private func mutate(_ method: String, _ values: [String: String], message: String = "") {
         Task {
             await perform {
-                if method == "play" || method == "open_world" { status = "Готуємо Minecraft…" }
+                if method == "play" || method == "open_world" { status = tr("Готуємо Minecraft…") }
                 _ = try await core.call(method, values, as: EmptyReply.self)
                 loadedTab = nil
                 status = message
@@ -893,7 +898,7 @@ private struct LauncherView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "mrpack") ?? .data]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        mutate("import", ["path": url.path], message: "Модпак додано до черги.")
+        mutate("import", ["path": url.path], message: tr("Модпак додано до черги."))
     }
 
     private func beginMicrosoft() {
@@ -916,7 +921,7 @@ private struct LauncherView: View {
         Task {
             do {
                 _ = try await core.call("finish_login", ["code": code], as: EmptyReply.self)
-                status = "Вхід у Microsoft виконано."
+                status = tr("Вхід у Microsoft виконано.")
             } catch { status = error.localizedDescription }
         }
     }

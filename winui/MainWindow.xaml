@@ -1,12 +1,42 @@
 <Window x:Class="Gradient.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Gradient Launcher">
-    <Grid x:Name="Layout" RequestedTheme="Light" Background="#A8DED7" Loaded="Start">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:Gradient" Title="Gradient Launcher">
+    <Grid x:Name="Layout" Background="{ThemeResource GradientSurface}" Loaded="Start">
+        <Grid.Resources>
+            <ResourceDictionary>
+                <ResourceDictionary.ThemeDictionaries>
+                    <ResourceDictionary x:Key="Light">
+                        <SolidColorBrush x:Key="GradientSurface" Color="#A8DED7"/>
+                        <SolidColorBrush x:Key="GradientTitleBar" Color="#E0F2F0"/>
+                        <SolidColorBrush x:Key="GradientNavigation" Color="#D1EAE7"/>
+                        <Color x:Key="GradientCoverClear">#00A8DED7</Color>
+                        <Color x:Key="GradientCoverFade">#DDA8DED7</Color>
+                        <Color x:Key="GradientCoverSolid">#FFA8DED7</Color>
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Dark">
+                        <SolidColorBrush x:Key="GradientSurface" Color="#172E32"/>
+                        <SolidColorBrush x:Key="GradientTitleBar" Color="#141F27"/>
+                        <SolidColorBrush x:Key="GradientNavigation" Color="#19262C"/>
+                        <Color x:Key="GradientCoverClear">#00172E32</Color>
+                        <Color x:Key="GradientCoverFade">#DD172E32</Color>
+                        <Color x:Key="GradientCoverSolid">#FF172E32</Color>
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="HighContrast">
+                        <SolidColorBrush x:Key="GradientSurface" Color="{ThemeResource SystemColorWindowColor}"/>
+                        <SolidColorBrush x:Key="GradientTitleBar" Color="{ThemeResource SystemColorWindowColor}"/>
+                        <SolidColorBrush x:Key="GradientNavigation" Color="{ThemeResource SystemColorWindowColor}"/>
+                        <Color x:Key="GradientCoverClear">Transparent</Color>
+                        <Color x:Key="GradientCoverFade">Transparent</Color>
+                        <Color x:Key="GradientCoverSolid">Transparent</Color>
+                    </ResourceDictionary>
+                </ResourceDictionary.ThemeDictionaries>
+            </ResourceDictionary>
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <TitleBar x:Name="WindowTitleBar" Title="Gradient Launcher" RequestedTheme="Dark"
-                  Background="#141F27" IsPaneToggleButtonVisible="True" PaneToggleRequested="ToggleNavigationPane">
+        <TitleBar x:Name="WindowTitleBar" Title="Gradient Launcher"
+                  Background="{ThemeResource GradientTitleBar}" IsPaneToggleButtonVisible="True" PaneToggleRequested="ToggleNavigationPane">
             <TitleBar.IconSource>
                 <SymbolIconSource Symbol="Home"/>
             </TitleBar.IconSource>
@@ -20,41 +50,41 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <AutoSuggestBox x:Name="Search" MaxWidth="520" VerticalAlignment="Center" QueryIcon="Find"
-                                    PlaceholderText="Пошук профілів" AutomationProperties.Name="Пошук профілів"
+                                    PlaceholderText="{local:Translate Key='Пошук профілів'}" AutomationProperties.Name="{local:Translate Key='Пошук профілів'}"
                                     TextChanged="SearchChanged" QuerySubmitted="SubmitProfileSearch"/>
                     <Button Grid.Column="1" Width="36" Height="34" Padding="0" VerticalAlignment="Center"
-                            ToolTipService.ToolTip="Створити або імпортувати профіль"
-                            AutomationProperties.Name="Створити або імпортувати профіль">
+                            ToolTipService.ToolTip="{local:Translate Key='Створити або імпортувати профіль'}"
+                            AutomationProperties.Name="{local:Translate Key='Створити або імпортувати профіль'}">
                         <SymbolIcon Symbol="Add"/>
                         <Button.Flyout>
                             <MenuFlyout>
-                                <MenuFlyoutItem Text="Новий профіль" Click="CreateProfile"/>
-                                <MenuFlyoutItem Text="Імпортувати .mrpack" Click="Import"/>
-                                <MenuFlyoutItem Text="Імпорт з лаунчера" Click="ImportLauncher"/>
+                                <MenuFlyoutItem Text="{local:Translate Key='Новий профіль'}" Click="CreateProfile"/>
+                                <MenuFlyoutItem Text="{local:Translate Key='Імпортувати .mrpack'}" Click="Import"/>
+                                <MenuFlyoutItem Text="{local:Translate Key='Імпорт з лаунчера'}" Click="ImportLauncher"/>
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
                 </Grid>
             </TitleBar.Content>
         </TitleBar>
-        <NavigationView x:Name="Navigation" Grid.Row="1" RequestedTheme="Dark" Background="#19262C"
+        <NavigationView x:Name="Navigation" Grid.Row="1" Background="{ThemeResource GradientNavigation}"
                         PaneDisplayMode="LeftCompact" IsPaneOpen="False" CompactPaneLength="56" OpenPaneLength="240"
                         IsBackButtonVisible="Collapsed" IsPaneToggleButtonVisible="False"
                         AlwaysShowHeader="False" IsSettingsVisible="False"
                         ItemInvoked="Navigate" PaneOpening="ShowProfileList" PaneClosing="HideProfileList">
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="LibraryNavigation" Content="Бібліотека" Icon="Library"
-                                    ToolTipService.ToolTip="Бібліотека"/>
-                <NavigationViewItem x:Name="DiscoverNavigation" Content="Каталог Modrinth" Icon="Find"
-                                    ToolTipService.ToolTip="Каталог Modrinth"/>
+                <NavigationViewItem x:Name="LibraryNavigation" Content="{local:Translate Key='Бібліотека'}" Icon="Library"
+                                    ToolTipService.ToolTip="{local:Translate Key='Бібліотека'}"/>
+                <NavigationViewItem x:Name="DiscoverNavigation" Content="{local:Translate Key='Каталог Modrinth'}" Icon="Find"
+                                    ToolTipService.ToolTip="{local:Translate Key='Каталог Modrinth'}"/>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
-                <NavigationViewItem x:Name="SettingsNavigation" Content="Налаштування" Icon="Setting"
-                                    ToolTipService.ToolTip="Налаштування"/>
+                <NavigationViewItem x:Name="SettingsNavigation" Content="{local:Translate Key='Налаштування'}" Icon="Setting"
+                                    ToolTipService.ToolTip="{local:Translate Key='Налаштування'}"/>
             </NavigationView.FooterMenuItems>
             <NavigationView.PaneCustomContent>
                 <StackPanel x:Name="ProfilePane" Visibility="Collapsed" Spacing="2" Margin="8,12,8,0">
-                    <TextBlock Text="Профілі" Margin="10,0,0,6" Style="{StaticResource CaptionTextBlockStyle}"/>
+                    <TextBlock Text="{local:Translate Key='Профілі'}" Margin="10,0,0,6" Style="{StaticResource CaptionTextBlockStyle}"/>
                     <ListView x:Name="Profiles" Margin="4,0" MaxHeight="360" SelectionChanged="Select">
                         <ListView.ItemTemplate>
                             <DataTemplate>
@@ -71,23 +101,23 @@
                     <Button x:Name="AccountsButton" Width="44" Height="44" Padding="0"
                             Margin="2,3" HorizontalAlignment="Left" CornerRadius="22"
                             Background="Transparent" BorderThickness="0"
-                            AutomationProperties.Name="Акаунти Minecraft" ToolTipService.ToolTip="Акаунти Minecraft">
+                            AutomationProperties.Name="{local:Translate Key='Акаунти Minecraft'}" ToolTipService.ToolTip="{local:Translate Key='Акаунти Minecraft'}">
                         <PersonPicture x:Name="AccountAvatar" Width="32" Height="32"
                                        AutomationProperties.AccessibilityView="Raw"/>
                         <Button.Flyout>
                             <MenuFlyout Placement="TopEdgeAlignedLeft">
-                                <MenuFlyoutItem Text="Керувати акаунтами" Click="ManageAccounts">
+                                <MenuFlyoutItem Text="{local:Translate Key='Керувати акаунтами'}" Click="ManageAccounts">
                                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Contact"/></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutSeparator/>
-                                <MenuFlyoutItem Text="Увійти в Microsoft" Click="MicrosoftLogin"/>
-                                <MenuFlyoutItem Text="Додати офлайн-акаунт" Click="Login"/>
-                                <MenuFlyoutItem Text="Скін Minecraft" Click="ManageSkin"/>
+                                <MenuFlyoutItem Text="{local:Translate Key='Увійти в Microsoft'}" Click="MicrosoftLogin"/>
+                                <MenuFlyoutItem Text="{local:Translate Key='Додати офлайн-акаунт'}" Click="Login"/>
+                                <MenuFlyoutItem Text="{local:Translate Key='Скін Minecraft'}" Click="ManageSkin"/>
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
             </NavigationView.PaneFooter>
-            <Grid RequestedTheme="Light" Background="#A8DED7">
+            <Grid Background="{ThemeResource GradientSurface}">
                 <ScrollViewer x:Name="LibraryPage">
                     <StackPanel>
                         <Grid Height="350">
@@ -95,30 +125,30 @@
                             <Rectangle>
                                 <Rectangle.Fill>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                        <GradientStop Color="#00A8DED7" Offset=".24"/>
-                                        <GradientStop Color="#DDA8DED7" Offset=".82"/>
-                                        <GradientStop Color="#A8DED7" Offset="1"/>
+                                        <GradientStop Color="{ThemeResource GradientCoverClear}" Offset=".24"/>
+                                        <GradientStop Color="{ThemeResource GradientCoverFade}" Offset=".82"/>
+                                        <GradientStop Color="{ThemeResource GradientCoverSolid}" Offset="1"/>
                                     </LinearGradientBrush>
                                 </Rectangle.Fill>
                             </Rectangle>
                             <StackPanel VerticalAlignment="Bottom" Padding="30,0,30,22" Spacing="11">
-                                <TextBlock x:Name="Heading" Text="Бібліотека" FontSize="42" FontWeight="Bold" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="Heading" Text="{local:Translate Key='Бібліотека'}" FontSize="42" FontWeight="Bold" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button x:Name="PlayButton" Background="#112C2B" Foreground="White" Content="▶  Грати" Click="Play" IsEnabled="False" Padding="24,8" CornerRadius="18"/>
-                                    <Button Content="Оновити" Click="Refresh"/>
-                                    <DropDownButton x:Name="ProfileActions" Content="Дії профілю" IsEnabled="False">
+                                    <Button x:Name="PlayButton" Background="#112C2B" Foreground="White" Content="{local:Translate Key='▶  Грати'}" Click="Play" IsEnabled="False" Padding="24,8" CornerRadius="18"/>
+                                    <Button Content="{local:Translate Key='Оновити'}" Click="Refresh"/>
+                                    <DropDownButton x:Name="ProfileActions" Content="{local:Translate Key='Дії профілю'}" IsEnabled="False">
                                         <DropDownButton.Flyout>
                                             <MenuFlyout>
-                                                <MenuFlyoutItem Text="Перейменувати" Click="RenameProfile"/>
-                                                <MenuFlyoutItem Text="Змінити іконку" Click="ChangeProfileIcon"/>
-                                                <MenuFlyoutItem Text="Java та пам’ять" Click="EditProfileLaunchSettings"/>
-                                                <MenuFlyoutItem Text="Групи профілю" Click="ProfileGroups"/>
-                                                <MenuFlyoutItem Text="Дублювати" Click="DuplicateProfile"/>
-                                                <MenuFlyoutItem Text="Експортувати .mrpack" Click="ExportProfile"/>
-                                                <MenuFlyoutItem Text="Відкрити папку профілю" Click="OpenProfileFolder"/>
-                                        <MenuFlyoutItem Text="Створити ярлик" Click="CreateProfileShortcut"/>
+                                                <MenuFlyoutItem Text="{local:Translate Key='Перейменувати'}" Click="RenameProfile"/>
+                                                <MenuFlyoutItem Text="{local:Translate Key='Змінити іконку'}" Click="ChangeProfileIcon"/>
+                                                <MenuFlyoutItem Text="{local:Translate Key='Java та пам’ять'}" Click="EditProfileLaunchSettings"/>
+                                                <MenuFlyoutItem Text="{local:Translate Key='Групи профілю'}" Click="ProfileGroups"/>
+                                                <MenuFlyoutItem Text="{local:Translate Key='Дублювати'}" Click="DuplicateProfile"/>
+                                                <MenuFlyoutItem Text="{local:Translate Key='Експортувати .mrpack'}" Click="ExportProfile"/>
+                                                <MenuFlyoutItem Text="{local:Translate Key='Відкрити папку профілю'}" Click="OpenProfileFolder"/>
+                                        <MenuFlyoutItem Text="{local:Translate Key='Створити ярлик'}" Click="CreateProfileShortcut"/>
                                                 <MenuFlyoutSeparator/>
-                                                <MenuFlyoutItem Text="Видалити профіль" Click="RemoveProfile"/>
+                                                <MenuFlyoutItem Text="{local:Translate Key='Видалити профіль'}" Click="RemoveProfile"/>
                                             </MenuFlyout>
                                         </DropDownButton.Flyout>
                                     </DropDownButton>
@@ -127,52 +157,52 @@
                         </Grid>
                         <StackPanel Padding="30,0,30,32" Spacing="14">
                             <Border BorderBrush="#5B9390" BorderThickness="0,1,0,1" Padding="0,12">
-                                <TextBlock x:Name="Metadata" Text="Виберіть профіль або імпортуйте модпак." TextWrapping="Wrap"/>
+                                <TextBlock x:Name="Metadata" Text="{local:Translate Key='Виберіть профіль або імпортуйте модпак.'}" TextWrapping="Wrap"/>
                             </Border>
                             <TextBlock x:Name="Status" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                             <Pivot x:Name="Details" SelectionChanged="DetailChanged">
-                                <PivotItem x:Name="LogTab" Header="Логи">
+                                <PivotItem x:Name="LogTab" Header="{local:Translate Key='Логи'}">
                                     <StackPanel Spacing="12">
-                                        <ComboBox x:Name="LogPicker" Header="Джерело логу" DisplayMemberPath="Label"
+                                        <ComboBox x:Name="LogPicker" Header="{local:Translate Key='Джерело логу'}" DisplayMemberPath="Label"
                                                   SelectionChanged="LogChanged" IsEnabled="False" MaxWidth="380"/>
-                                        <TextBlock x:Name="GameLog" Text="Виберіть профіль." FontFamily="Consolas"
+                                        <TextBlock x:Name="GameLog" Text="{local:Translate Key='Виберіть профіль.'}" FontFamily="Consolas"
                                                    TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                                     </StackPanel>
                                 </PivotItem>
-                                <PivotItem Header="Завантаження">
+                                <PivotItem Header="{local:Translate Key='Завантаження'}">
                                     <StackPanel x:Name="Jobs" Spacing="8"/>
                                 </PivotItem>
-                                <PivotItem x:Name="ContentTab" Header="Контент">
+                                <PivotItem x:Name="ContentTab" Header="{local:Translate Key='Контент'}">
                                     <StackPanel Spacing="8">
-                                        <Button x:Name="AddModButton" Content="+  Додати .jar" Click="AddMod" IsEnabled="False"/>
+                                        <Button x:Name="AddModButton" Content="{local:Translate Key='+  Додати .jar'}" Click="AddMod" IsEnabled="False"/>
                                         <StackPanel x:Name="ContentRows" Spacing="8"/>
                                     </StackPanel>
                                 </PivotItem>
-                                <PivotItem x:Name="WorldsTab" Header="Світи">
+                                <PivotItem x:Name="WorldsTab" Header="{local:Translate Key='Світи'}">
                                     <StackPanel x:Name="WorldRows" Spacing="8"/>
                                 </PivotItem>
-                                <PivotItem x:Name="ScreenshotsTab" Header="Скриншоти">
+                                <PivotItem x:Name="ScreenshotsTab" Header="{local:Translate Key='Скриншоти'}">
                                     <StackPanel Spacing="12">
-                                        <Button x:Name="ExportShotsButton" Content="Експортувати всі у ZIP"
+                                        <Button x:Name="ExportShotsButton" Content="{local:Translate Key='Експортувати всі у ZIP'}"
                                                 IsEnabled="False" Click="ExportScreenshots"/>
-                                        <ComboBox x:Name="ScreenshotPicker" Header="Скриншот" DisplayMemberPath="filename"
+                                        <ComboBox x:Name="ScreenshotPicker" Header="{local:Translate Key='Скриншот'}" DisplayMemberPath="filename"
                                                   IsEnabled="False" SelectionChanged="ScreenshotChanged"/>
-                                        <TextBlock x:Name="ScreenshotStatus" Text="Виберіть профіль." TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="ScreenshotStatus" Text="{local:Translate Key='Виберіть профіль.'}" TextWrapping="Wrap"/>
                                         <Image x:Name="ScreenshotPreview" MaxHeight="440" Stretch="Uniform"
                                                HorizontalAlignment="Left"/>
                                     </StackPanel>
                                 </PivotItem>
-                                <PivotItem x:Name="FilesTab" Header="Файли">
+                                <PivotItem x:Name="FilesTab" Header="{local:Translate Key='Файли'}">
                                     <StackPanel Spacing="8">
-                                        <Button x:Name="ParentDirectoryButton" Content="На рівень вище" Click="ParentDirectory" IsEnabled="False"/>
-                                        <TextBlock x:Name="DirectoryLabel" Text="Файли профілю" TextWrapping="Wrap"/>
+                                        <Button x:Name="ParentDirectoryButton" Content="{local:Translate Key='На рівень вище'}" Click="ParentDirectory" IsEnabled="False"/>
+                                        <TextBlock x:Name="DirectoryLabel" Text="{local:Translate Key='Файли профілю'}" TextWrapping="Wrap"/>
                                         <ListView x:Name="FileList" MaxHeight="380" DisplayMemberPath="Label"
                                                   IsItemClickEnabled="True" SelectionMode="None" ItemClick="OpenFileEntry"/>
                                     </StackPanel>
                                 </PivotItem>
-                                <PivotItem x:Name="ServersTab" Header="Сервери">
+                                <PivotItem x:Name="ServersTab" Header="{local:Translate Key='Сервери'}">
                                     <StackPanel Spacing="8">
-                                        <Button x:Name="AddServerButton" Content="Додати сервер" Click="AddServer" IsEnabled="False"/>
+                                        <Button x:Name="AddServerButton" Content="{local:Translate Key='Додати сервер'}" Click="AddServer" IsEnabled="False"/>
                                         <StackPanel x:Name="ServerRows" Spacing="10"/>
                                     </StackPanel>
                                 </PivotItem>
@@ -182,22 +212,34 @@
                 </ScrollViewer>
                 <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
                     <StackPanel Padding="30" Spacing="16" HorizontalAlignment="Left" MaxWidth="680">
-                        <Button Content="До бібліотеки" Click="CloseSettings"/>
-                        <TextBlock Text="Налаштування запуску" Style="{StaticResource TitleTextBlockStyle}"/>
-                        <TextBox x:Name="MemorySetting" Header="Максимум пам’яті (МіБ)" InputScope="Number"/>
-                        <ToggleSwitch x:Name="FullscreenSetting" Header="На весь екран"/>
+                        <Button Content="{local:Translate Key='До бібліотеки'}" Click="CloseSettings"/>
+                        <TextBlock Text="{local:Translate Key='Вигляд і мова'}" Style="{StaticResource TitleTextBlockStyle}"/>
+                        <ComboBox x:Name="ThemeSetting" Header="{local:Translate Key='Тема'}" SelectionChanged="ChangeAppearance">
+                            <ComboBoxItem Content="{local:Translate Key='Системна'}" Tag="system"/>
+                            <ComboBoxItem Content="{local:Translate Key='Світла'}" Tag="light"/>
+                            <ComboBoxItem Content="{local:Translate Key='Темна'}" Tag="dark"/>
+                        </ComboBox>
+                        <ComboBox x:Name="LanguageSetting" Header="{local:Translate Key='Мова'}" SelectionChanged="ChangeAppearance">
+                            <ComboBoxItem Content="Українська" Tag="uk"/>
+                            <ComboBoxItem Content="English" Tag="en"/>
+                        </ComboBox>
+                        <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                        <TextBlock Text="{local:Translate Key='Налаштування запуску'}" Style="{StaticResource TitleTextBlockStyle}"/>
+                        <TextBox x:Name="MemorySetting" Header="{local:Translate Key='Максимум пам’яті (МіБ)'}" InputScope="Number"/>
+                        <ToggleSwitch x:Name="FullscreenSetting" Header="{local:Translate Key='На весь екран'}"
+                                      OnContent="{local:Translate Key='Увімкнено'}" OffContent="{local:Translate Key='Вимкнено'}"/>
                         <StackPanel Orientation="Horizontal" Spacing="12">
-                            <TextBox x:Name="WidthSetting" Header="Ширина (пкс)" InputScope="Number" MinWidth="140"/>
-                            <TextBox x:Name="HeightSetting" Header="Висота (пкс)" InputScope="Number" MinWidth="140"/>
+                            <TextBox x:Name="WidthSetting" Header="{local:Translate Key='Ширина (пкс)'}" InputScope="Number" MinWidth="140"/>
+                            <TextBox x:Name="HeightSetting" Header="{local:Translate Key='Висота (пкс)'}" InputScope="Number" MinWidth="140"/>
                         </StackPanel>
-                        <TextBox x:Name="ArgumentsSetting" Header="Аргументи JVM · один на рядок" AcceptsReturn="True"
+                        <TextBox x:Name="ArgumentsSetting" Header="{local:Translate Key='Аргументи JVM · один на рядок'}" AcceptsReturn="True"
                                  FontFamily="Consolas" TextWrapping="Wrap" MinHeight="96"/>
-                        <Button x:Name="SaveSettingsButton" Content="Зберегти" Click="SaveSettings"/>
+                        <Button x:Name="SaveSettingsButton" Content="{local:Translate Key='Зберегти'}" Click="SaveSettings"/>
                         <TextBlock x:Name="SettingsStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                        <Button Content="Інсталяції Java" Click="ManageJava"/>
+                        <Button Content="{local:Translate Key='Інсталяції Java'}" Click="ManageJava"/>
                         <TextBlock x:Name="JavaStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                        <Button Content="Увімкнути посилання Gradient" Click="RegisterProjectLinks"/>
-                        <Button x:Name="CheckUpdateButton" Content="Перевірити оновлення" Click="CheckUpdate"/>
+                        <Button Content="{local:Translate Key='Увімкнути посилання Gradient'}" Click="RegisterProjectLinks"/>
+                        <Button x:Name="CheckUpdateButton" Content="{local:Translate Key='Перевірити оновлення'}" Click="CheckUpdate"/>
                         <TextBlock x:Name="UpdateStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                         <HyperlinkButton x:Name="UpdateDownload" Visibility="Collapsed"/>
                     </StackPanel>
@@ -211,45 +253,45 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <StackPanel Spacing="8">
-                        <Button Content="До бібліотеки" Click="CloseDiscover"/>
-                        <TextBlock Text="Каталог Modrinth" Style="{StaticResource TitleTextBlockStyle}"/>
+                        <Button Content="{local:Translate Key='До бібліотеки'}" Click="CloseDiscover"/>
+                        <TextBlock Text="{local:Translate Key='Каталог Modrinth'}" Style="{StaticResource TitleTextBlockStyle}"/>
                     </StackPanel>
                     <StackPanel Grid.Row="1" Spacing="8">
-                        <ComboBox x:Name="DiscoverKind" Header="Тип контенту" SelectedIndex="0" SelectionChanged="DiscoverFilterChanged">
-                            <ComboBoxItem Content="Модпаки" Tag="modpack"/>
-                            <ComboBoxItem Content="Моди для вибраного профілю" Tag="mod"/>
+                        <ComboBox x:Name="DiscoverKind" Header="{local:Translate Key='Тип контенту'}" SelectedIndex="0" SelectionChanged="DiscoverFilterChanged">
+                            <ComboBoxItem Content="{local:Translate Key='Модпаки'}" Tag="modpack"/>
+                            <ComboBoxItem Content="{local:Translate Key='Моди для вибраного профілю'}" Tag="mod"/>
                         </ComboBox>
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <AutoSuggestBox x:Name="DiscoverQuery" PlaceholderText="Знайти на Modrinth" QueryIcon="Find"
+                            <AutoSuggestBox x:Name="DiscoverQuery" PlaceholderText="{local:Translate Key='Знайти на Modrinth'}" QueryIcon="Find"
                                             QuerySubmitted="DiscoverSearch"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                <Button Content="Пошук" Click="DiscoverSearchClick"/>
-                                <Button Content="Відкрити посилання" Click="OpenLinkClick"/>
+                                <Button Content="{local:Translate Key='Пошук'}" Click="DiscoverSearchClick"/>
+                                <Button Content="{local:Translate Key='Відкрити посилання'}" Click="OpenLinkClick"/>
                             </StackPanel>
                         </Grid>
-                        <Expander Header="Фільтри та сортування" HorizontalAlignment="Stretch">
+                        <Expander Header="{local:Translate Key='Фільтри та сортування'}" HorizontalAlignment="Stretch">
                             <StackPanel Spacing="8">
-                                <ComboBox x:Name="DiscoverSort" Header="Сортувати" SelectedIndex="0">
-                                    <ComboBoxItem Content="Автоматично"/>
-                                    <ComboBoxItem Content="За завантаженнями" Tag="downloads"/>
-                                    <ComboBoxItem Content="Найновіші" Tag="newest"/>
-                                    <ComboBoxItem Content="Нещодавно оновлені" Tag="updated"/>
+                                <ComboBox x:Name="DiscoverSort" Header="{local:Translate Key='Сортувати'}" SelectedIndex="0">
+                                    <ComboBoxItem Content="{local:Translate Key='Автоматично'}"/>
+                                    <ComboBoxItem Content="{local:Translate Key='За завантаженнями'}" Tag="downloads"/>
+                                    <ComboBoxItem Content="{local:Translate Key='Найновіші'}" Tag="newest"/>
+                                    <ComboBoxItem Content="{local:Translate Key='Нещодавно оновлені'}" Tag="updated"/>
                                 </ComboBox>
                                 <StackPanel x:Name="DiscoverPackFilters" Spacing="8">
-                                    <TextBox x:Name="DiscoverGameVersion" Header="Версія Minecraft" PlaceholderText="Наприклад, 1.21.1"/>
-                                    <ComboBox x:Name="DiscoverLoader" Header="Завантажувач" SelectedIndex="0">
-                                        <ComboBoxItem Content="Усі"/>
+                                    <TextBox x:Name="DiscoverGameVersion" Header="{local:Translate Key='Версія Minecraft'}" PlaceholderText="{local:Translate Key='Наприклад, 1.21.1'}"/>
+                                    <ComboBox x:Name="DiscoverLoader" Header="{local:Translate Key='Завантажувач'}" SelectedIndex="0">
+                                        <ComboBoxItem Content="{local:Translate Key='Усі'}"/>
                                         <ComboBoxItem Content="Fabric" Tag="fabric"/>
                                         <ComboBoxItem Content="Forge" Tag="forge"/>
                                         <ComboBoxItem Content="NeoForge" Tag="neoforge"/>
                                         <ComboBoxItem Content="Quilt" Tag="quilt"/>
                                     </ComboBox>
                                 </StackPanel>
-                                <Button Content="Застосувати" Click="DiscoverSearchClick"/>
+                                <Button Content="{local:Translate Key='Застосувати'}" Click="DiscoverSearchClick"/>
                             </StackPanel>
                         </Expander>
                     </StackPanel>
@@ -276,8 +318,8 @@
                     </ListView>
                     <StackPanel Grid.Row="3" Spacing="8">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="DiscoverBack" Content="Попередня сторінка" IsEnabled="False" Click="DiscoverPrevious"/>
-                            <Button x:Name="DiscoverMore" Content="Наступна сторінка" IsEnabled="False" Click="DiscoverNext"/>
+                            <Button x:Name="DiscoverBack" Content="{local:Translate Key='Попередня сторінка'}" IsEnabled="False" Click="DiscoverPrevious"/>
+                            <Button x:Name="DiscoverMore" Content="{local:Translate Key='Наступна сторінка'}" IsEnabled="False" Click="DiscoverNext"/>
                         </StackPanel>
                         <TextBlock x:Name="DiscoverStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>

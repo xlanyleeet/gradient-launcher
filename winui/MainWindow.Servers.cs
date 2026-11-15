@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
+using static Gradient.InterfaceText;
+
 namespace Gradient;
 
 public sealed partial class MainWindow
@@ -18,25 +20,25 @@ public sealed partial class MainWindow
         var servers = await core.Call<ServerEntry[]>(new { method = "servers", id = profile.id });
         if (SelectedProfile?.id != profile.id || !Equals(Details.SelectedItem, ServersTab)) return;
         AddServerButton.IsEnabled = !profile.running && !profile.quarantined;
-        if (servers.Length == 0) ServerRows.Children.Add(new TextBlock { Text = "Серверів ще немає." });
+        if (servers.Length == 0) ServerRows.Children.Add(new TextBlock { Text = Tr("Серверів ще немає.") });
         foreach (var server in servers)
         {
             var row = ProfileRow(server.name, server.address);
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             if (!profile.running && !profile.quarantined)
             {
-                var join = new Button { Content = "Приєднатися" };
+                var join = new Button { Content = Tr("Приєднатися") };
                 join.Click += async (_, _) => await MutateProfile(profile,
                     new { method = "join_server", id = profile.id, server = server.id });
                 actions.Children.Add(join);
                 if (server.editable)
                 {
-                    var edit = new Button { Content = "Редагувати" };
+                    var edit = new Button { Content = Tr("Редагувати") };
                     edit.Click += async (_, _) => await Run(() => EditServer(profile, server));
-                    var remove = new Button { Content = "Видалити" };
+                    var remove = new Button { Content = Tr("Видалити") };
                     remove.Click += async (_, _) => await Run(async () =>
                     {
-                        var dialog = Editor("Видалити сервер?", server.name, "Видалити");
+                        var dialog = Editor(Tr("Видалити сервер?"), server.name, Tr("Видалити"));
                         dialog.DefaultButton = ContentDialogButton.Close;
                         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
                             await SaveServerChange(new { method = "remove_server", id = profile.id, server = server.id });
@@ -58,12 +60,12 @@ public sealed partial class MainWindow
 
     private async Task EditServer(Profile profile, ServerEntry? server)
     {
-        var name = new TextBox { Header = "Назва", Text = server?.name ?? "" };
-        var address = new TextBox { Header = "Адреса", Text = server?.address ?? "" };
+        var name = new TextBox { Header = Tr("Назва"), Text = server?.name ?? "" };
+        var address = new TextBox { Header = Tr("Адреса"), Text = server?.address ?? "" };
         var form = new StackPanel { Spacing = 10 };
         form.Children.Add(name);
         form.Children.Add(address);
-        var dialog = Editor(server is null ? "Додати сервер" : "Редагувати сервер", form, "Зберегти");
+        var dialog = Editor(server is null ? Tr("Додати сервер") : Tr("Редагувати сервер"), form, Tr("Зберегти"));
         void Validate() => dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(name.Text) && !string.IsNullOrWhiteSpace(address.Text);
         name.TextChanged += (_, _) => Validate();
         address.TextChanged += (_, _) => Validate();

@@ -18,23 +18,23 @@ struct JavaRuntimesView: View {
 
     var body: some View {
         Form {
-            Picker("Версія Java", selection: $major) {
+            Picker(tr("Версія Java"), selection: $major) {
                 ForEach(["8", "17", "21", "25"], id: \.self) { Text($0).tag($0) }
             }
             .disabled(busy)
             if let runtime = runtimes.first(where: { String($0.parsed_version) == major }) {
                 Text("\(runtime.version) · \(runtime.path)").textSelection(.enabled)
             } else {
-                Text("Для цієї версії шлях ще не збережено.").foregroundStyle(.secondary)
+                Text(tr("Для цієї версії шлях ще не збережено.")).foregroundStyle(.secondary)
             }
             HStack {
-                Button("Вибрати файл…", action: chooseFile).disabled(busy)
-                Button("Завантажити") {
+                Button(tr("Вибрати файл…"), action: chooseFile).disabled(busy)
+                Button(tr("Завантажити")) {
                     Task { await change("download_java_runtime", ["major": major]) }
                 }
                 .disabled(busy)
                 Spacer()
-                Button("Готово") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(tr("Готово")) { dismiss() }.keyboardShortcut(.cancelAction)
             }
             if busy { ProgressView().controlSize(.small) }
             if !status.isEmpty { Text(status) }
@@ -48,7 +48,7 @@ struct JavaRuntimesView: View {
 
     private func chooseFile() {
         let panel = NSOpenPanel()
-        panel.message = "Виберіть виконуваний файл java всередині папки bin."
+        panel.message = tr("Виберіть виконуваний файл java всередині папки bin.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await change("set_java_runtime", ["major": major, "path": url.path]) }
     }
@@ -57,7 +57,7 @@ struct JavaRuntimesView: View {
         await run {
             _ = try await core.call(method, values, as: EmptyReply.self)
             try await refresh()
-            status = "Java \(major) збережено."
+            status = tr("Java {0} збережено.", String(describing: major))
         }
     }
 

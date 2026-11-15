@@ -73,39 +73,39 @@ struct DiscoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Picker("Тип контенту", selection: $kind) {
-                Text("Модпаки").tag("modpack")
-                Text("Моди для вибраного профілю").tag("mod")
+            Picker(tr("Тип контенту"), selection: $kind) {
+                Text(tr("Модпаки")).tag("modpack")
+                Text(tr("Моди для вибраного профілю")).tag("mod")
             }
             .disabled(busy)
             .onChange(of: kind) { beginSearch() }
             HStack {
-                TextField("Знайти на Modrinth", text: $query)
+                TextField(tr("Знайти на Modrinth"), text: $query)
                     .onSubmit { beginSearch() }
-                Button("Пошук", systemImage: "magnifyingglass", action: beginSearch)
+                Button(tr("Пошук"), systemImage: "magnifyingglass", action: beginSearch)
                     .disabled(busy)
-                Button("Відкрити посилання", systemImage: "link") { linkPrompt = true }
+                Button(tr("Відкрити посилання"), systemImage: "link") { linkPrompt = true }
                     .disabled(busy)
             }
-            DisclosureGroup("Фільтри та сортування") {
+            DisclosureGroup(tr("Фільтри та сортування")) {
                 Form {
-                    Picker("Сортувати", selection: $sort) {
-                        Text("Автоматично").tag("")
-                        Text("За завантаженнями").tag("downloads")
-                        Text("Найновіші").tag("newest")
-                        Text("Нещодавно оновлені").tag("updated")
+                    Picker(tr("Сортувати"), selection: $sort) {
+                        Text(tr("Автоматично")).tag("")
+                        Text(tr("За завантаженнями")).tag("downloads")
+                        Text(tr("Найновіші")).tag("newest")
+                        Text(tr("Нещодавно оновлені")).tag("updated")
                     }
                     if kind == "modpack" {
-                        TextField("Версія Minecraft", text: $gameVersion, prompt: Text("1.21.1"))
-                        Picker("Завантажувач", selection: $loader) {
-                            Text("Усі").tag("")
+                        TextField(tr("Версія Minecraft"), text: $gameVersion, prompt: Text("1.21.1"))
+                        Picker(tr("Завантажувач"), selection: $loader) {
+                            Text(tr("Усі")).tag("")
                             Text("Fabric").tag("fabric")
                             Text("Forge").tag("forge")
                             Text("NeoForge").tag("neoforge")
                             Text("Quilt").tag("quilt")
                         }
                     }
-                    Button("Застосувати") { beginSearch() }
+                    Button(tr("Застосувати")) { beginSearch() }
                 }
                 .disabled(busy)
             }
@@ -136,20 +136,20 @@ struct DiscoverView: View {
                 if !status.isEmpty { Text(status) }
                 Spacer()
                 if currentOffset > 0 {
-                    Button("Попередня сторінка") {
+                    Button(tr("Попередня сторінка")) {
                         let offset = currentOffset >= 20 ? currentOffset - 20 : 0
                         Task { await loadPage(offset) }
                     }
                     .disabled(busy)
                 }
                 if let nextOffset {
-                    Button("Наступна сторінка") { Task { await loadPage(nextOffset) } }
+                    Button(tr("Наступна сторінка")) { Task { await loadPage(nextOffset) } }
                         .disabled(busy)
                 }
             }
         }
         .padding()
-        .navigationTitle("Каталог Modrinth")
+        .navigationTitle(tr("Каталог Modrinth"))
         .task(id: incomingLink) {
             if let incomingLink {
                 while busy && !Task.isCancelled {
@@ -162,23 +162,23 @@ struct DiscoverView: View {
                 await loadPage(0)
             }
         }
-        .alert("Відкрити посилання Modrinth", isPresented: $linkPrompt) {
+        .alert(tr("Відкрити посилання Modrinth"), isPresented: $linkPrompt) {
             TextField("https://modrinth.com/modpack/…", text: $linkText)
-            Button("Відкрити") {
+            Button(tr("Відкрити")) {
                 let url = linkText
                 linkText = ""
                 Task { await openLink(url) }
             }
-            Button("Скасувати", role: .cancel) {}
+            Button(tr("Скасувати"), role: .cancel) {}
         }
         .sheet(item: $selected) { hit in
             VStack(alignment: .leading, spacing: 16) {
                 Text(hit.name).font(.title2.bold())
                 if let details = projectDetails {
                     Text(details.description)
-                    Text("\(details.downloads.formatted()) завантажень · \(details.license) · Оновлено \(details.updated)")
+                    Text(tr("{0} завантажень · {1} · Оновлено {2}", String(describing: details.downloads.formatted()), String(describing: details.license), String(describing: details.updated)))
                         .font(.callout).foregroundStyle(.secondary)
-                    Link("Відкрити на Modrinth", destination: details.url)
+                    Link(tr("Відкрити на Modrinth"), destination: details.url)
                     if let gallery = details.gallery, gallery.scheme == "https" {
                         AsyncImage(url: gallery) { image in
                             image.resizable().scaledToFit()
@@ -186,7 +186,7 @@ struct DiscoverView: View {
                             ProgressView().controlSize(.small)
                         }
                         .frame(maxHeight: 180)
-                        .accessibilityLabel("Зображення проєкту")
+                        .accessibilityLabel(Text(tr("Зображення проєкту")))
                     }
                     if !details.body.isEmpty {
                         ScrollView {
@@ -199,17 +199,17 @@ struct DiscoverView: View {
                 }
                 if versions.isEmpty {
                     Text(hit.kind == "mod" && hit.profile == nil ?
-                         "Виберіть профіль у бібліотеці, щоб установити мод." : "Сумісних версій немає.")
+                         tr("Виберіть профіль у бібліотеці, щоб установити мод.") : tr("Сумісних версій немає."))
                 } else {
-                    Picker("Версія", selection: $version) {
-                        if version.isEmpty { Text("Виберіть іншу версію").tag("") }
+                    Picker(tr("Версія"), selection: $version) {
+                        if version.isEmpty { Text(tr("Виберіть іншу версію")).tag("") }
                         ForEach(versions) { entry in Text("\(entry.name) · \(entry.channel)").tag(entry.id) }
                     }
                 }
                 HStack {
                     Spacer()
-                    Button("Закрити") { selected = nil }.keyboardShortcut(.cancelAction)
-                    Button("Встановити") {
+                    Button(tr("Закрити")) { selected = nil }.keyboardShortcut(.cancelAction)
+                    Button(tr("Встановити")) {
                         let selectedVersion = version
                         selected = nil
                         Task { await install(hit, version: selectedVersion) }
@@ -229,7 +229,7 @@ struct DiscoverView: View {
         nextOffset = nil
         currentOffset = 0
         guard kind != "mod" || profileID != nil else {
-            status = "Спочатку виберіть профіль у бібліотеці."
+            status = tr("Спочатку виберіть профіль у бібліотеці.")
             return
         }
         submittedQuery = query
@@ -253,7 +253,7 @@ struct DiscoverView: View {
     }
 
     @MainActor private func loadPage(_ offset: UInt32) async {
-        await run("Шукаємо…") {
+        await run(tr("Шукаємо…")) {
             let filters = appliedFilters.merging([
                 "query": submittedQuery, "offset": String(offset)
             ]) { _, current in current }
@@ -261,13 +261,13 @@ struct DiscoverView: View {
             results = page.hits
             currentOffset = offset
             nextOffset = page.next_offset
-            status = results.isEmpty ? "Нічого не знайдено." : ""
+            status = results.isEmpty ? tr("Нічого не знайдено.") : ""
         }
     }
 
     private func showVersions(_ hit: Hit) {
         Task {
-            await run("Завантажуємо проєкт…") {
+            await run(tr("Завантажуємо проєкт…")) {
                 try await loadProject(.init(id: hit.id, name: hit.name, kind: submittedKind,
                                             profile: target, preferredVersion: nil))
             }
@@ -275,7 +275,7 @@ struct DiscoverView: View {
     }
 
     @MainActor private func openLink(_ url: String) async {
-        await run("Відкриваємо посилання…") {
+        await run(tr("Відкриваємо посилання…")) {
             let linked = try await core.call("discover", ["action": "resolve_link", "url": url], as: LinkedProject.self)
             try await loadProject(.init(id: linked.id, name: linked.name, kind: linked.kind,
                                         profile: linked.kind == "mod" ? profileID : nil,
@@ -303,12 +303,12 @@ struct DiscoverView: View {
     }
 
     @MainActor private func install(_ hit: ProjectSelection, version: String) async {
-        await run("Встановлюємо…") {
+        await run(tr("Встановлюємо…")) {
             var values = ["action": "install", "project": hit.id, "version": version, "kind": hit.kind]
             values["profile"] = hit.profile
             _ = try await core.call("discover", values, as: EmptyReply.self)
             installed()
-            status = hit.kind == "modpack" ? "Модпак додано до черги." : "Мод встановлено."
+            status = hit.kind == "modpack" ? tr("Модпак додано до черги.") : tr("Мод встановлено.")
         }
     }
 

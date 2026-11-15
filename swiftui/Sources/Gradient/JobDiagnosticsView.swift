@@ -10,7 +10,7 @@ struct JobDiagnosticsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Діагностика встановлення").font(.title2.bold())
+            Text(tr("Діагностика встановлення")).font(.title2.bold())
             if let report {
                 ScrollView {
                     Text(report)
@@ -25,8 +25,8 @@ struct JobDiagnosticsView: View {
             }
             HStack {
                 Spacer()
-                Button("Закрити") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Копіювати") {
+                Button(tr("Закрити")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(tr("Копіювати")) {
                     guard let report else { return }
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(report, forType: .string)

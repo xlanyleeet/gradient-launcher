@@ -5,6 +5,8 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
+using static Gradient.InterfaceText;
+
 namespace Gradient;
 
 public sealed partial class MainWindow
@@ -28,7 +30,7 @@ public sealed partial class MainWindow
         var key = $"{profile.id}/{profile.running}";
         if (screenshotProfile == key) return;
 
-        ClearScreenshots("Завантажуємо скриншоти…");
+        ClearScreenshots(Tr("Завантажуємо скриншоти…"));
         try
         {
             var rows = await core.Call<Screenshot[]>(new { method = "screenshots", id = profile.id });
@@ -36,13 +38,13 @@ public sealed partial class MainWindow
             ScreenshotPicker.ItemsSource = rows;
             ScreenshotPicker.IsEnabled = rows.Length > 0;
             ExportShotsButton.IsEnabled = rows.Length > 0;
-            ScreenshotStatus.Text = rows.Length == 0 ? "Скриншотів ще немає." : "";
+            ScreenshotStatus.Text = rows.Length == 0 ? Tr("Скриншотів ще немає.") : "";
             if (rows.Length > 0) ScreenshotPicker.SelectedIndex = 0;
             screenshotProfile = key;
         }
         catch
         {
-            ScreenshotStatus.Text = "Не вдалося завантажити скриншоти.";
+            ScreenshotStatus.Text = Tr("Не вдалося завантажити скриншоти.");
             throw;
         }
     }
@@ -53,7 +55,7 @@ public sealed partial class MainWindow
         if (!File.Exists(shot.path))
         {
             ScreenshotPreview.Source = null;
-            ScreenshotStatus.Text = "Файл скриншота більше не доступний.";
+            ScreenshotStatus.Text = Tr("Файл скриншота більше не доступний.");
             return;
         }
         ScreenshotPreview.Source = new BitmapImage(new Uri(shot.path)) { DecodePixelWidth = 1400 };
@@ -70,6 +72,6 @@ public sealed partial class MainWindow
         var file = await picker.PickSaveFileAsync();
         if (file is null) return;
         await core.Call<JsonElement>(new { method = "export_screenshots", id = profile.id, path = file.Path });
-        ScreenshotStatus.Text = "Архів збережено.";
+        ScreenshotStatus.Text = Tr("Архів збережено.");
     });
 }

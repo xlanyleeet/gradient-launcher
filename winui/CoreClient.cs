@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
+using static Gradient.InterfaceText;
+
 namespace Gradient;
 
 internal sealed class CoreClient : IDisposable
@@ -26,12 +28,12 @@ internal sealed class CoreClient : IDisposable
                 StandardInputEncoding = new UTF8Encoding(false),
                 StandardOutputEncoding = Encoding.UTF8
             };
-            process = Process.Start(info) ?? throw new IOException("Не вдалося запустити ядро.");
+            process = Process.Start(info) ?? throw new IOException(Tr("Не вдалося запустити ядро."));
             try
             {
                 var hello = await Read();
                 if (hello.GetProperty("protocol").GetInt32() != 1)
-                    throw new IOException("Несумісна версія ядра.");
+                    throw new IOException(Tr("Несумісна версія ядра."));
             }
             catch
             {
@@ -50,7 +52,7 @@ internal sealed class CoreClient : IDisposable
     private async Task<JsonElement> Read()
     {
         var line = await process!.StandardOutput.ReadLineAsync()
-            ?? throw new IOException("Ядро завершило роботу. Перевірте каталог даних.");
+            ?? throw new IOException(Tr("Ядро завершило роботу. Перевірте каталог даних."));
         using var document = JsonDocument.Parse(line);
         return document.RootElement.Clone();
     }
