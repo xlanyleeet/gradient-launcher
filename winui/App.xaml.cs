@@ -11,6 +11,16 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        try { await Launch(); }
+        catch (Exception error)
+        {
+            Program.WriteStartupError(error);
+            throw;
+        }
+    }
+
+    private async Task Launch()
+    {
         var current = AppInstance.GetCurrent();
         var activation = current.GetActivatedEventArgs();
         var primary = AppInstance.FindOrRegisterForKey("GradientLauncher");

@@ -64,6 +64,30 @@ jobs:
               throw "Build output missing: $path"
             }
           }
+      - name: Verify WinUI opens its main window
+        shell: pwsh
+        run: |
+          $output = (Resolve-Path 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64').Path
+          $env:THESEUS_CONFIG_DIR = Join-Path $env:RUNNER_TEMP 'gradient-winui-smoke'
+          $launcher = Start-Process -FilePath (Join-Path $output 'Gradient.WinUI.exe') -WorkingDirectory $output -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(25)
+            do {
+              $launcher.Refresh()
+              if ($launcher.HasExited) { throw "WinUI exited during startup ($($launcher.ExitCode))." }
+              if ($launcher.MainWindowHandle -ne 0 -and $launcher.MainWindowTitle -eq 'Gradient Launcher') { break }
+              Start-Sleep -Milliseconds 250
+            } while ((Get-Date) -lt $deadline)
+            if ($launcher.MainWindowTitle -ne 'Gradient Launcher') { throw 'WinUI did not open its main window.' }
+          } catch {
+            $log = Join-Path $env:LOCALAPPDATA 'GradientNative/winui-error.log'
+            if (Test-Path $log) { Get-Content $log }
+            throw
+          } finally {
+            if (!$launcher.HasExited) {
+              if (!$launcher.CloseMainWindow() -or !$launcher.WaitForExit(5000)) { $launcher.Kill() }
+            }
+          }
       - uses: actions/upload-artifact@v4
         if: github.ref_type != 'tag'
         with:

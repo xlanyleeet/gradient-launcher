@@ -4,18 +4,62 @@ use theseus::{
     cache, data, install, instance, pack::install_from::CreatePackLocation,
 };
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum Kind {
     Mod,
     Modpack,
+    #[serde(rename = "resourcepack")]
+    ResourcePack,
+    #[serde(rename = "datapack")]
+    DataPack,
+    Shader,
+    Server,
 }
 
 impl Kind {
+    const DOWNLOADABLE: [Self; 5] = [
+        Self::Modpack,
+        Self::Mod,
+        Self::ResourcePack,
+        Self::DataPack,
+        Self::Shader,
+    ];
+
     fn key(&self) -> &'static str {
         match self {
             Self::Mod => "mod",
             Self::Modpack => "modpack",
+            Self::ResourcePack => "resourcepack",
+            Self::DataPack => "datapack",
+            Self::Shader => "shader",
+            Self::Server => "server",
+        }
+    }
+
+    fn matches_project(self, project_type: &str, loaders: &[String]) -> bool {
+        self.key() == project_type
+            || (self == Self::DataPack
+                && loaders.iter().any(|loader| loader == "datapack"))
+    }
+
+    fn content_type(self) -> Option<data::ContentType> {
+        match self {
+            Self::Mod => Some(data::ContentType::Mod),
+            Self::ResourcePack => Some(data::ContentType::ResourcePack),
+            Self::DataPack => Some(data::ContentType::DataPack),
+            Self::Shader => Some(data::ContentType::Shader),
+            Self::Modpack | Self::Server => None,
+        }
+    }
+
+    fn loader(self, profile: &data::InstanceMetadata) -> Option<&str> {
+        match self {
+            Self::Mod => Some(profile.applied_content_set.loader.as_str()),
+            Self::Shader => Some("iris"),
+            Self::ResourcePack => Some("minecraft"),
+            Self::DataPack => Some("datapack"),
+            Self::Modpack | Self::Server => None,
         }
     }
 }
@@ -76,29 +120,26 @@ async fn target(
     kind: &Kind,
     profile: Option<String>,
 ) -> super::Result<Option<data::InstanceMetadata>> {
-    match kind {
-        Kind::Modpack => Ok(None),
-        Kind::Mod => {
-            let id =
-                profile.ok_or("Виберіть профіль для встановлення мода.")?;
-            Ok(Some(
-                instance::get(&id).await?.ok_or("Профіль не знайдено.")?,
-            ))
-        }
+    if let Some(id) = profile.filter(|_| kind.content_type().is_some()) {
+        Ok(Some(
+            instance::get(&id).await?.ok_or("Профіль не знайдено.")?,
+        ))
+    } else {
+        Ok(None)
     }
 }
 
 fn compatible(
     version: &data::Version,
     target: Option<&data::InstanceMetadata>,
+    kind: Kind,
 ) -> bool {
     target.is_none_or(|profile| {
         let content = &profile.applied_content_set;
         version.game_versions.contains(&content.game_version)
-            && version
-                .loaders
-                .iter()
-                .any(|loader| loader == content.loader.as_str())
+            && kind.loader(profile).is_none_or(|required| {
+                version.loaders.iter().any(|loader| loader == required)
+            })
     })
 }
 
@@ -118,7 +159,7 @@ pub(super) async fn installed_mod_versions(
     versions.sort_by_key(|version| std::cmp::Reverse(version.date_published));
     let options = versions
         .into_iter()
-        .filter(|version| compatible(version, Some(&profile)))
+        .filter(|version| compatible(version, Some(&profile), Kind::Mod))
         .map(|version| {
             json!({
                 "id": version.id,
@@ -142,7 +183,7 @@ pub(super) async fn switch_installed_mod(
         .await?
         .ok_or("Версію не знайдено.")?;
     if selected.project_id != project.id
-        || !compatible(&selected, Some(&profile))
+        || !compatible(&selected, Some(&profile), Kind::Mod)
     {
         return Err("Версія несумісна або належить іншому моду.".into());
     }
@@ -191,6 +232,9 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                 .map(|offset| offset.parse::<u32>())
                 .transpose()?
                 .unwrap_or(0);
+            if kind == Kind::Server {
+                return Box::pin(search_servers(&query, offset, sort)).await;
+            }
             let mut filters =
                 vec![vec![format!("project_type:{}", kind.key())]];
             if let Some(profile) = target {
@@ -198,19 +242,21 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                     "versions:{}",
                     profile.applied_content_set.game_version
                 )]);
-                filters.push(vec![format!(
-                    "categories:{}",
-                    profile.applied_content_set.loader.as_str()
-                )]);
-                filters.push(vec![
-                    "environment:client_and_server".to_owned(),
-                    "environment:client_only".to_owned(),
-                    "environment:client_only_server_optional".to_owned(),
-                    "environment:singleplayer_only".to_owned(),
-                    "environment:server_only_client_optional".to_owned(),
-                    "environment:client_or_server".to_owned(),
-                    "environment:client_or_server_prefers_both".to_owned(),
-                ]);
+                if kind == Kind::Mod {
+                    filters.push(vec![format!(
+                        "categories:{}",
+                        profile.applied_content_set.loader.as_str()
+                    )]);
+                    filters.push(vec![
+                        "environment:client_and_server".to_owned(),
+                        "environment:client_only".to_owned(),
+                        "environment:client_only_server_optional".to_owned(),
+                        "environment:singleplayer_only".to_owned(),
+                        "environment:server_only_client_optional".to_owned(),
+                        "environment:client_or_server".to_owned(),
+                        "environment:client_or_server_prefers_both".to_owned(),
+                    ]);
+                }
             } else {
                 if let Some(version) = game_version
                     .as_deref()
@@ -282,7 +328,7 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             versions.sort_by_key(|version| {
                 std::cmp::Reverse(version.date_published)
             });
-            json!(versions.into_iter().filter(|version| compatible(version, target.as_ref()))
+            json!(versions.into_iter().filter(|version| compatible(version, target.as_ref(), kind))
                 .map(|version| json!({ "id": version.id, "name": version.version_number, "channel": version.version_type }))
                 .collect::<Vec<_>>())
         }
@@ -290,7 +336,7 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             let project = Box::pin(cache::get_project(&project, None))
                 .await?
                 .ok_or("Проєкт Modrinth не знайдено.")?;
-            if project.project_type != kind.key() {
+            if !kind.matches_project(&project.project_type, &project.loaders) {
                 return Err(
                     "Проєкт не належить до вибраного типу контенту.".into()
                 );
@@ -334,27 +380,31 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             let selected = cache::get_version(&version, None)
                 .await?
                 .ok_or("Версію не знайдено.")?;
-            if project_data.project_type != kind.key()
-                || selected.project_id != project
-                || !compatible(&selected, target.as_ref())
+            if !kind.matches_project(
+                &project_data.project_type,
+                &project_data.loaders,
+            ) || selected.project_id != project
+                || !compatible(&selected, target.as_ref(), kind)
             {
                 return Err(
                     "Версія несумісна або належить іншому проєкту.".into()
                 );
             }
-            if let Some(profile) = target {
+            if let Some(content_type) = kind.content_type() {
+                let profile = target
+                    .ok_or("Виберіть профіль для встановлення контенту.")?;
                 super::require_stopped(&profile.instance.id).await?;
                 Box::pin(instance::install_project_and_wait(
                     &profile.instance.id,
                     instance::InstallProjectWithDependenciesRequest {
                         project_id: project,
                         version_id: Some(version),
-                        content_type: data::ContentType::Mod,
+                        content_type,
                         selected: Default::default(),
                     },
                 ))
                 .await?;
-            } else {
+            } else if kind == Kind::Modpack {
                 install::create_modpack_instance(
                     CreatePackLocation::FromVersionId {
                         project_id: project,
@@ -365,10 +415,58 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                     None,
                 )
                 .await?;
+            } else {
+                return Err(
+                    "Сервери додаються до списку серверів профілю.".into()
+                );
             }
             Value::Null
         }
     })
+}
+
+async fn search_servers(
+    query: &str,
+    offset: u32,
+    sort: Option<Sort>,
+) -> super::Result<Value> {
+    let index = match sort {
+        Some(Sort::Downloads) => "minecraft_java_server.verified_plays_2w",
+        Some(Sort::Newest) => "date_created",
+        Some(Sort::Updated) => "date_modified",
+        _ => "relevance",
+    };
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs([
+            ("query", query.trim()),
+            ("index", index),
+            ("new_filters", "project_types = minecraft_java_server"),
+            ("offset", &offset.to_string()),
+            ("limit", "20"),
+        ])
+        .finish();
+    let results = cache::get_search_results_v3(&format!("?{query}"), None)
+        .await?
+        .ok_or("Modrinth не повернув результати пошуку.")?;
+    let total = results.result.total_hits;
+    let next = offset.saturating_add(results.result.hits.len() as u32);
+    let hits: Vec<_> = results.result.hits.into_iter().filter_map(|hit| {
+        let id = hit["project_id"].as_str()?;
+        let mut url = url::Url::parse("https://modrinth.com/server/").ok()?;
+        url.path_segments_mut().ok()?.pop_if_empty().push(hit["slug"].as_str().unwrap_or(id));
+        Some(json!({
+            "id": id,
+            "name": hit["name"].as_str().unwrap_or(id),
+            "description": hit["summary"].as_str().or_else(|| hit["description"].as_str()).unwrap_or(""),
+            "author": hit["author"].as_str().unwrap_or(""),
+            "icon": hit["icon_url"].as_str().filter(|icon| !icon.is_empty()),
+            "address": hit["minecraft_java_server"]["address"].as_str(),
+            "url": url.as_str(),
+        }))
+    }).collect();
+    Ok(
+        json!({ "hits": hits, "next_offset": (next > offset && next < total).then_some(next) }),
+    )
 }
 
 async fn resolve_project_link(value: &str) -> super::Result<Value> {
@@ -392,7 +490,7 @@ async fn resolve_project_link(value: &str) -> super::Result<Value> {
         ("https", "modrinth.com" | "www.modrinth.com") => {}
         _ => {
             return Err(
-                "Вставте посилання на мод, модпак або версію Modrinth.".into()
+                "Вставте посилання на проєкт або версію Modrinth.".into()
             );
         }
     }
@@ -403,40 +501,56 @@ async fn resolve_project_link(value: &str) -> super::Result<Value> {
                 byte.is_ascii_alphanumeric() || b"-_".contains(&byte)
             })
     };
-    let (project_key, requested_kind, preferred_version) = match parts
-        .as_slice()
-    {
-        [kind @ ("mod" | "modpack"), id] if valid_id(id) => {
-            (id.to_string(), Some(*kind), None)
-        }
-        [kind @ ("mod" | "modpack"), id, "version", version]
-            if valid_id(id) && valid_id(version) =>
-        {
-            (id.to_string(), Some(*kind), Some(version.to_string()))
-        }
-        ["version", id] if valid_id(id) => {
-            let version = Box::pin(cache::get_version(id, None))
-                .await?
-                .ok_or("Версію не знайдено.")?;
-            (version.project_id, None, Some(version.id))
-        }
-        _ => {
-            return Err(
-                "Вставте посилання на мод, модпак або версію Modrinth.".into()
-            );
-        }
-    };
+    let valid_kind =
+        |key| Kind::DOWNLOADABLE.iter().any(|kind| kind.key() == key);
+    let (project_key, requested_kind, preferred_version) =
+        match parts.as_slice() {
+            [kind, id] if valid_kind(*kind) && valid_id(id) => {
+                (id.to_string(), Some(*kind), None)
+            }
+            [kind, id, "version", version]
+                if valid_kind(*kind) && valid_id(id) && valid_id(version) =>
+            {
+                (id.to_string(), Some(*kind), Some(version.to_string()))
+            }
+            ["version", id] if valid_id(id) => {
+                let version = Box::pin(cache::get_version(id, None))
+                    .await?
+                    .ok_or("Версію не знайдено.")?;
+                (version.project_id, None, Some(version.id))
+            }
+            _ => {
+                return Err(
+                    "Вставте посилання на проєкт або версію Modrinth.".into()
+                );
+            }
+        };
     let project = Box::pin(cache::get_project(&project_key, None))
         .await?
         .ok_or("Проєкт Modrinth не знайдено.")?;
-    let kind = project.project_type.as_str();
-    if !matches!(kind, "mod" | "modpack")
-        || requested_kind.is_some_and(|requested| requested != kind)
-    {
-        return Err("Посилання має вказувати на мод або модпак.".into());
-    }
+    let key = requested_kind.unwrap_or(&project.project_type);
+    let kind = Kind::DOWNLOADABLE
+        .into_iter()
+        .find(|kind| {
+            kind.key() == key
+                && kind.matches_project(&project.project_type, &project.loaders)
+        })
+        .ok_or("Посилання має вказувати на завантажуваний проєкт Modrinth.")?;
     Ok(json!({
         "id": project.id, "name": project.title, "description": project.description,
-        "kind": kind, "preferred_version": preferred_version,
+        "kind": kind.key(), "preferred_version": preferred_version,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Kind;
+
+    #[test]
+    fn datapacks_can_belong_to_multitype_projects() {
+        let loaders = ["fabric".into(), "datapack".into()];
+        assert!(Kind::DataPack.matches_project("mod", &loaders));
+        assert!(!Kind::DataPack.matches_project("mod", &["fabric".into()]));
+        assert!(!Kind::ResourcePack.matches_project("mod", &loaders));
+    }
 }

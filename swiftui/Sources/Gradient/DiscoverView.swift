@@ -4,7 +4,13 @@ struct DiscoverView: View {
     let core: CoreClient
     let profileID: String?
     @Binding var incomingLink: String?
+    let back: () -> Void
     let installed: () -> Void
+
+    private let categories = [
+        ("modpack", "Збірки"), ("mod", "Моди"), ("resourcepack", "Пакети ресурсів"),
+        ("datapack", "Пакети даних"), ("shader", "Шейдери"), ("server", "Сервери"),
+    ]
 
     private struct Hit: Decodable, Identifiable {
         let id: String
@@ -12,6 +18,8 @@ struct DiscoverView: View {
         let description: String
         let author: String
         let icon: URL?
+        let address: String?
+        let url: URL?
     }
 
     private struct LinkedProject: Decodable {
@@ -63,6 +71,7 @@ struct DiscoverView: View {
     @State private var nextOffset: UInt32?
     @State private var currentOffset: UInt32 = 0
     @State private var selected: ProjectSelection?
+    @State private var selectedServer: Hit?
     @State private var linkPrompt = false
     @State private var linkText = ""
     @State private var projectDetails: ProjectDetails?
@@ -73,12 +82,15 @@ struct DiscoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Picker(tr("Тип контенту"), selection: $kind) {
-                Text(tr("Модпаки")).tag("modpack")
-                Text(tr("Моди для вибраного профілю")).tag("mod")
+            HStack(spacing: 10) {
+                Button(action: back) {
+                    Image(systemName: "chevron.left").frame(width: 22, height: 22)
+                }
+                .accessibilityLabel(Text(tr("До бібліотеки")))
+                .help(tr("До бібліотеки"))
+                Text(tr("Каталог Modrinth")).font(.title2.bold())
             }
-            .disabled(busy)
-            .onChange(of: kind) { beginSearch() }
+            categoryBar
             HStack {
                 TextField(tr("Знайти на Modrinth"), text: $query)
                     .onSubmit { beginSearch() }
@@ -91,7 +103,7 @@ struct DiscoverView: View {
                 Form {
                     Picker(tr("Сортувати"), selection: $sort) {
                         Text(tr("Автоматично")).tag("")
-                        Text(tr("За завантаженнями")).tag("downloads")
+                        Text(tr(kind == "server" ? "За активністю гравців" : "За завантаженнями")).tag("downloads")
                         Text(tr("Найновіші")).tag("newest")
                         Text(tr("Нещодавно оновлені")).tag("updated")
                     }
@@ -110,7 +122,10 @@ struct DiscoverView: View {
                 .disabled(busy)
             }
             List(results) { hit in
-                Button { showVersions(hit) } label: {
+                Button {
+                    if submittedKind == "server" { selectedServer = hit }
+                    else { showVersions(hit) }
+                } label: {
                     HStack(alignment: .top, spacing: 12) {
                         AsyncImage(url: hit.icon?.scheme == "https" ? hit.icon : nil) { image in
                             image.resizable().scaledToFit()
@@ -149,7 +164,7 @@ struct DiscoverView: View {
             }
         }
         .padding()
-        .navigationTitle(tr("Каталог Modrinth"))
+        .sheet(item: $selectedServer, content: serverDetails)
         .task(id: incomingLink) {
             if let incomingLink {
                 while busy && !Task.isCancelled {
@@ -198,8 +213,8 @@ struct DiscoverView: View {
                     }
                 }
                 if versions.isEmpty {
-                    Text(hit.kind == "mod" && hit.profile == nil ?
-                         tr("Виберіть профіль у бібліотеці, щоб установити мод.") : tr("Сумісних версій немає."))
+                    Text(hit.kind != "modpack" && hit.profile == nil ?
+                         tr("Виберіть профіль для встановлення контенту.") : tr("Сумісних версій немає."))
                 } else {
                     Picker(tr("Версія"), selection: $version) {
                         if version.isEmpty { Text(tr("Виберіть іншу версію")).tag("") }
@@ -223,18 +238,63 @@ struct DiscoverView: View {
         }
     }
 
+    private var categoryBar: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 2) {
+                ForEach(categories.indices, id: \.self) { index in
+                    let (value, title) = categories[index]
+                    Button {
+                        guard kind != value else { return }
+                        kind = value
+                        beginSearch()
+                    } label: {
+                        Text(tr(title)).font(.callout.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .foregroundStyle(kind == value ? Color.accentColor : Color.primary)
+                            .background(kind == value ? Color.accentColor.opacity(0.20) : .clear, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(kind == value ? .isSelected : [])
+                }
+            }
+            .padding(4)
+            .background(.quaternary, in: Capsule())
+        }
+        .scrollIndicators(.hidden)
+        .accessibilityLabel(Text(tr("Тип контенту")))
+        .disabled(busy)
+    }
+
+    private func serverDetails(_ server: Hit) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(server.name).font(.title2.bold())
+            Text(server.description)
+            if let address = server.address { Text(address).textSelection(.enabled) }
+            if let url = server.url { Link(tr("Відкрити на Modrinth"), destination: url) }
+            HStack {
+                Spacer()
+                Button(tr("Закрити")) { selectedServer = nil }.keyboardShortcut(.cancelAction)
+                if let address = server.address, let profileID {
+                    Button(tr("Додати сервер")) {
+                        selectedServer = nil
+                        Task { await saveServer(server, address: address, profile: profileID) }
+                    }
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+
     private func beginSearch() {
         guard !busy else { return }
         results = []
         nextOffset = nil
         currentOffset = 0
-        guard kind != "mod" || profileID != nil else {
-            status = tr("Спочатку виберіть профіль у бібліотеці.")
-            return
-        }
         submittedQuery = query
         submittedKind = kind
-        target = kind == "mod" ? profileID : nil
+        target = kind == "modpack" || kind == "server" ? nil : profileID
         appliedFilters = [:]
         if !sort.isEmpty { appliedFilters["sort"] = sort }
         if kind == "modpack" {
@@ -278,7 +338,7 @@ struct DiscoverView: View {
         await run(tr("Відкриваємо посилання…")) {
             let linked = try await core.call("discover", ["action": "resolve_link", "url": url], as: LinkedProject.self)
             try await loadProject(.init(id: linked.id, name: linked.name, kind: linked.kind,
-                                        profile: linked.kind == "mod" ? profileID : nil,
+                                        profile: linked.kind == "modpack" ? nil : profileID,
                                         preferredVersion: linked.preferred_version))
         }
     }
@@ -288,7 +348,7 @@ struct DiscoverView: View {
         projectDetails = try await core.call("discover", values, as: ProjectDetails.self)
         values["action"] = "versions"
         values["profile"] = project.profile
-        if project.kind == "mod" && project.profile == nil {
+        if project.kind != "modpack" && project.profile == nil {
             versions = []
         } else {
             versions = try await core.call("discover", values, as: [Version].self)
@@ -308,7 +368,15 @@ struct DiscoverView: View {
             values["profile"] = hit.profile
             _ = try await core.call("discover", values, as: EmptyReply.self)
             installed()
-            status = hit.kind == "modpack" ? tr("Модпак додано до черги.") : tr("Мод встановлено.")
+            status = hit.kind == "modpack" ? tr("Модпак додано до черги.") : tr("Контент встановлено.")
+        }
+    }
+
+    @MainActor private func saveServer(_ server: Hit, address: String, profile: String) async {
+        await run(tr("Зберігаємо сервер…")) {
+            _ = try await core.call("save_server", ["id": profile, "name": server.name, "address": address], as: EmptyReply.self)
+            installed()
+            status = tr("Сервер додано.")
         }
     }
 

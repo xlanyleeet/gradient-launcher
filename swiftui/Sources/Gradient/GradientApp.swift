@@ -190,24 +190,15 @@ private struct LauncherView: View {
                     }
                 }
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 218)
+            .navigationSplitViewColumnWidth(min: 218, ideal: 218, max: 218)
+            .searchable(text: $search, placement: .sidebar, prompt: Text(tr("Пошук профілів")))
             .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Button(tr("Акаунти"), systemImage: "person.2", action: showAccounts)
-                    Button(tr("Скін Minecraft"), systemImage: "person.crop.square") { skinSettings = true }
-                    Button(tr("Увійти в Microsoft"), systemImage: "person.crop.circle", action: beginMicrosoft)
-                    Button(tr("Офлайн-акаунт"), systemImage: "person") { showLogin = true }
-                }
-                    .padding(12)
+                accountMenu
             }
         } detail: {
             if showDiscover {
-                DiscoverView(core: core, profileID: selectedID, incomingLink: $catalogLink) {
-                    loadedTab = nil
-                }
-                .toolbar {
-                    Button(tr("До бібліотеки"), systemImage: "chevron.left") { showDiscover = false }
-                }
+                DiscoverView(core: core, profileID: selectedID, incomingLink: $catalogLink,
+                             back: { showDiscover = false }, installed: { loadedTab = nil })
             } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -248,7 +239,6 @@ private struct LauncherView: View {
             }
             }
         }
-        .searchable(text: $search, prompt: Text(tr("Пошук профілів")))
         .task {
             while !Task.isCancelled {
                 if !(await core.isSuspendedForUpdate) { await perform(refresh) }
@@ -692,6 +682,40 @@ private struct LauncherView: View {
         }
     }
 
+    private var accountMenu: some View {
+        let active = accounts.first(where: \.selected)
+        return Menu {
+            Button(tr("Керувати акаунтами"), systemImage: "person.2", action: showAccounts)
+            Button(tr("Скін Minecraft"), systemImage: "person.crop.square") { skinSettings = true }
+                .disabled(active == nil)
+            Divider()
+            Button(tr("Увійти в Microsoft"), systemImage: "person.crop.circle", action: beginMicrosoft)
+            Button(tr("Додати офлайн-акаунт"), systemImage: "person.badge.plus") { showLogin = true }
+        } label: {
+            HStack(spacing: 9) {
+                ZStack {
+                    Circle().fill(Color.accentColor.opacity(0.18))
+                    if let active, let initial = active.name.first {
+                        Text(String(initial).uppercased()).font(.callout.weight(.semibold))
+                    } else {
+                        Image(systemName: "person.fill").font(.callout)
+                    }
+                }
+                .frame(width: 30, height: 30)
+                .foregroundStyle(Color.accentColor)
+                Text(active?.name ?? tr("Акаунти Minecraft"))
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
     @ViewBuilder private func libraryEditor(_ sheet: LibrarySheet) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             if sheet == .accounts {
@@ -798,6 +822,7 @@ private struct LauncherView: View {
         profiles = try await core.call("library", as: [Profile].self)
         if profile == nil { selectedID = profiles.first?.id }
         jobs = try await core.call("queue", as: [Job].self)
+        accounts = try await core.call("accounts", as: [Account].self)
         try await loadSelection()
     }
 

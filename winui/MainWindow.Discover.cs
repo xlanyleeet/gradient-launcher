@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 using static Gradient.InterfaceText;
@@ -9,7 +10,8 @@ namespace Gradient;
 
 public sealed partial class MainWindow
 {
-    public sealed record DiscoverHit(string id, string name, string description, string author, string? icon)
+    public sealed record DiscoverHit(string id, string name, string description, string author, string? icon,
+        string? address, string? url)
     {
         public BitmapImage? IconSource => Uri.TryCreate(icon, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
             ? new BitmapImage(uri) { DecodePixelWidth = 96 } : null;
@@ -25,6 +27,7 @@ public sealed partial class MainWindow
     private sealed record LinkedProject(string id, string name, string kind, string? preferred_version);
     private sealed record SearchSpec(string Query, string Kind, string? Profile, string? Sort, string? GameVersion, string? Loader);
     private SearchSpec? discoverSearch;
+    private string discoverKind = "modpack";
     private uint? discoverOffset;
     private uint currentOffset;
 
@@ -62,22 +65,23 @@ public sealed partial class MainWindow
     private async void DiscoverSearchClick(object sender, RoutedEventArgs e) =>
         await SubmitDiscoverSearch();
 
-    private async void DiscoverFilterChanged(object sender, SelectionChangedEventArgs e)
+    private async void DiscoverCategoryClick(object sender, RoutedEventArgs e)
     {
-        if (ready && DiscoverPage.Visibility == Visibility.Visible)
-        {
-            DiscoverPackFilters.Visibility = DiscoverContentKind == "modpack"
-                ? Visibility.Visible : Visibility.Collapsed;
-            await SubmitDiscoverSearch();
-        }
+        var selected = (ToggleButton)sender;
+        foreach (var category in DiscoverCategories.Children.OfType<ToggleButton>())
+            category.IsChecked = category == selected;
+        var kind = (string)selected.Tag;
+        if (discoverKind == kind) return;
+        discoverKind = kind;
+        DiscoverPackFilters.Visibility = kind == "modpack" ? Visibility.Visible : Visibility.Collapsed;
+        DiscoverPopularity.Content = Tr(kind == "server" ? "За активністю гравців" : "За завантаженнями");
+        await SubmitDiscoverSearch();
     }
-
-    private string DiscoverContentKind => (DiscoverKind.SelectedItem as PivotItem)?.Tag as string ?? "modpack";
 
     private SearchSpec CurrentDiscoverSearch()
     {
-        var kind = DiscoverContentKind;
-        return new SearchSpec(DiscoverQuery.Text.Trim(), kind, kind == "mod" ? SelectedProfile?.id : null,
+        var kind = discoverKind;
+        return new SearchSpec(DiscoverQuery.Text.Trim(), kind, kind is "modpack" or "server" ? null : SelectedProfile?.id,
             (DiscoverSort.SelectedItem as ComboBoxItem)?.Tag as string,
             kind == "modpack" ? DiscoverGameVersion.Text.Trim() : null,
             kind == "modpack" ? (DiscoverLoader.SelectedItem as ComboBoxItem)?.Tag as string : null);
@@ -86,16 +90,7 @@ public sealed partial class MainWindow
     private Task SubmitDiscoverSearch()
     {
         var search = CurrentDiscoverSearch();
-        return DiscoverAction(async () =>
-        {
-            if (search.Kind == "mod" && search.Profile is null)
-            {
-                ClearDiscoverResults();
-                DiscoverStatus.Text = Tr("Спочатку виберіть профіль у бібліотеці.");
-                return;
-            }
-            await SearchDiscover(search, 0);
-        });
+        return DiscoverAction(() => SearchDiscover(search, 0));
     }
 
     private async void DiscoverPrevious(object sender, RoutedEventArgs e)
@@ -123,6 +118,7 @@ public sealed partial class MainWindow
             kind = search.Kind, profile = search.Profile, offset = offset.ToString(System.Globalization.CultureInfo.InvariantCulture),
             sort = search.Sort, game_version = search.GameVersion, loader = search.Loader
         });
+        if (search.Kind != discoverKind) return;
         discoverSearch = search;
         currentOffset = offset;
         discoverOffset = page.next_offset;
@@ -143,8 +139,27 @@ public sealed partial class MainWindow
 
     private async void SelectDiscoverResult(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not DiscoverHit hit || discoverSearch is not { } search) return;
-        await DiscoverAction(() => ShowProject(hit.id, hit.name, search.Kind, search.Profile, null));
+        if (e.ClickedItem is not DiscoverHit hit || discoverSearch is not { } search || search.Kind != discoverKind) return;
+        await DiscoverAction(() => search.Kind == "server" ? ShowCatalogServer(hit)
+            : ShowProject(hit.id, hit.name, search.Kind, search.Profile, null));
+    }
+
+    private async Task ShowCatalogServer(DiscoverHit server)
+    {
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock { Text = server.description, TextWrapping = TextWrapping.Wrap });
+        if (server.address is { } address)
+            content.Children.Add(new TextBlock { Text = address, IsTextSelectionEnabled = true });
+        if (Uri.TryCreate(server.url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+            content.Children.Add(new HyperlinkButton { Content = Tr("Відкрити на Modrinth"), NavigateUri = uri });
+        var profile = SelectedProfile;
+        var dialog = Editor(server.name, content, Tr("Додати сервер"));
+        dialog.CloseButtonText = Tr("Закрити");
+        dialog.IsPrimaryButtonEnabled = profile is not null && !string.IsNullOrEmpty(server.address);
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary || profile is null) return;
+        await core.Call<JsonElement>(new { method = "save_server", id = profile.id, name = server.name, address = server.address });
+        serverViewKey = null;
+        DiscoverStatus.Text = Tr("Сервер додано.");
     }
 
     private async void OpenLinkClick(object sender, RoutedEventArgs e)
@@ -165,7 +180,7 @@ public sealed partial class MainWindow
         DiscoverStatus.Text = Tr("Відкриваємо посилання…");
         var linked = await core.Call<LinkedProject>(new { method = "discover", action = "resolve_link", url });
         await ShowProject(linked.id, linked.name, linked.kind,
-            linked.kind == "mod" ? SelectedProfile?.id : null, linked.preferred_version);
+            linked.kind == "modpack" ? null : SelectedProfile?.id, linked.preferred_version);
     }
 
     private async Task ShowProject(string id, string name, string kind, string? profile, string? preferredVersion)
@@ -175,7 +190,7 @@ public sealed partial class MainWindow
             {
                 method = "discover", action = "project", project = id, kind
             });
-            var needsProfile = kind == "mod" && profile is null;
+            var needsProfile = kind != "modpack" && profile is null;
             var versions = needsProfile ? Array.Empty<DiscoverVersion>() : await core.Call<DiscoverVersion[]>(new
             {
                 method = "discover", action = "versions", project = id, kind, profile
@@ -200,7 +215,7 @@ public sealed partial class MainWindow
                     Content = new TextBlock { Text = details.body, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap }
                 });
             content.Children.Add(versions.Length == 0
-                ? new TextBlock { Text = needsProfile ? Tr("Виберіть профіль у бібліотеці, щоб установити мод.") : Tr("Сумісних версій немає.") }
+                ? new TextBlock { Text = needsProfile ? Tr("Виберіть профіль для встановлення контенту.") : Tr("Сумісних версій немає.") }
                 : picker);
             if (preferredVersion is not null && versions.Length > 0 && picker.SelectedItem is null)
                 content.Children.Add(new TextBlock { Text = Tr("Версія за посиланням недоступна. Можна вибрати іншу.") });
@@ -216,6 +231,6 @@ public sealed partial class MainWindow
                 method = "discover", action = "install", project = id, version = version.id, kind, profile
             });
             loadedTab = null;
-            DiscoverStatus.Text = kind == "modpack" ? Tr("Модпак додано до черги.") : Tr("Мод встановлено.");
+            DiscoverStatus.Text = kind == "modpack" ? Tr("Модпак додано до черги.") : Tr("Контент встановлено.");
     }
 }

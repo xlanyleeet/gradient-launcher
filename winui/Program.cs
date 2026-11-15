@@ -15,7 +15,27 @@ internal static class Program
         {
             SynchronizationContext.SetSynchronizationContext(
                 new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-            _ = new App();
+            try
+            {
+                _ = new App();
+            }
+            catch (Exception error)
+            {
+                WriteStartupError(error);
+                throw;
+            }
         });
+    }
+
+    internal static void WriteStartupError(Exception error)
+    {
+        try
+        {
+            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GradientNative");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "winui-error.log"), error.ToString());
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }
