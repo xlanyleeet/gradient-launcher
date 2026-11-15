@@ -197,6 +197,9 @@
                         <Button Content="Інсталяції Java" Click="ManageJava"/>
                         <TextBlock x:Name="JavaStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                         <Button Content="Увімкнути посилання Gradient" Click="RegisterProjectLinks"/>
+                        <Button x:Name="CheckUpdateButton" Content="Перевірити оновлення" Click="CheckUpdate"/>
+                        <TextBlock x:Name="UpdateStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                        <HyperlinkButton x:Name="UpdateDownload" Visibility="Collapsed"/>
                     </StackPanel>
                 </ScrollViewer>
                 <Grid x:Name="DiscoverPage" Visibility="Collapsed" Padding="24"

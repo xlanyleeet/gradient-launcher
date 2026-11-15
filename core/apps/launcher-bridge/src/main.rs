@@ -10,6 +10,7 @@ use theseus::{
 };
 
 mod discover;
+mod updates;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -17,6 +18,7 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Library,
+    CheckUpdate,
     CreateProfileShortcut {
         id: String,
     },
@@ -325,6 +327,7 @@ async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
 
 async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     Ok(match request {
+        Request::CheckUpdate => updates::check().await?,
         Request::CreateProfileShortcut { id } => {
             let profile = instance::get(&id).await?.ok_or("Профіль не знайдено.")?;
             let mut url = url::Url::parse("gradient-native://launch/instance")?;

@@ -11,6 +11,38 @@ public sealed partial class MainWindow
     private sealed record LaunchSettings(uint memory_mib, bool fullscreen, ushort width, ushort height, string[] arguments);
     private sealed record ProfileLaunchSettings(string? memory, string? java);
     private sealed record JavaRuntime(uint parsed_version, string version, string path);
+    private sealed record UpdateInfo(string installed, AvailableUpdate? available);
+    private sealed record AvailableUpdate(string version, string download_url);
+
+    private async void CheckUpdate(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        UpdateDownload.Visibility = Visibility.Collapsed;
+        UpdateStatus.Text = "Перевіряємо оновлення…";
+        try
+        {
+            await Run(async () =>
+            {
+                try
+                {
+                    var info = await core.Call<UpdateInfo>(new { method = "check_update" });
+                    if (info.available is { } release)
+                    {
+                        UpdateStatus.Text = $"Встановлено {info.installed}. Доступна версія {release.version}.";
+                        UpdateDownload.Content = $"Завантажити {release.version}";
+                        UpdateDownload.NavigateUri = new Uri(release.download_url);
+                        UpdateDownload.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        UpdateStatus.Text = $"Встановлено {info.installed}. Новішого релізу для цієї платформи немає.";
+                    }
+                }
+                catch (Exception error) { UpdateStatus.Text = error.Message; }
+            }, waitForCore: true);
+        }
+        finally { CheckUpdateButton.IsEnabled = true; }
+    }
 
     private void RegisterProjectLinks(object sender, RoutedEventArgs e)
     {

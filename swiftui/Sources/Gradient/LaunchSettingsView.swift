@@ -16,6 +16,15 @@ private struct SaveLaunchSettings: Encodable {
 struct LaunchSettingsView: View {
     let core: CoreClient
 
+    private struct UpdateInfo: Decodable {
+        struct Release: Decodable {
+            let version: String
+            let download_url: URL
+        }
+        let installed: String
+        let available: Release?
+    }
+
     @State private var memory = ""
     @State private var width = ""
     @State private var height = ""
@@ -25,6 +34,9 @@ struct LaunchSettingsView: View {
     @State private var busy = false
     @State private var status = ""
     @State private var showJava = false
+    @State private var updateInfo: UpdateInfo?
+    @State private var updateError: String?
+    @State private var checkingUpdate = false
 
     private var values: LaunchSettings? {
         guard let memory = UInt32(memory), memory > 0,
@@ -38,6 +50,22 @@ struct LaunchSettingsView: View {
         Form {
             Section("Java") {
                 Button("Інсталяції Java…") { showJava = true }
+            }
+            Section("Оновлення Gradient") {
+                Button("Перевірити оновлення") { Task { await checkForUpdate() } }
+                    .disabled(checkingUpdate)
+                if checkingUpdate {
+                    ProgressView("Перевіряємо оновлення…").controlSize(.small)
+                } else if let updateInfo {
+                    Text("Встановлено \(updateInfo.installed).")
+                    if let release = updateInfo.available {
+                        Link("Завантажити \(release.version)", destination: release.download_url)
+                    } else {
+                        Text("Новішого релізу для цієї платформи немає.")
+                    }
+                } else if let updateError {
+                    Text(updateError)
+                }
             }
             Section("Пам’ять і вікно гри") {
                 TextField("Максимум пам’яті (МіБ)", text: $memory)
@@ -65,6 +93,19 @@ struct LaunchSettingsView: View {
         .frame(width: 480)
         .task { await load() }
         .sheet(isPresented: $showJava) { JavaRuntimesView(core: core) }
+    }
+
+    @MainActor private func checkForUpdate() async {
+        guard !checkingUpdate else { return }
+        checkingUpdate = true
+        updateInfo = nil
+        updateError = nil
+        defer { checkingUpdate = false }
+        do {
+            updateInfo = try await core.call("check_update", as: UpdateInfo.self)
+        } catch {
+            updateError = error.localizedDescription
+        }
     }
 
     @MainActor private func load() async {
