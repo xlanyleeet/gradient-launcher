@@ -15,7 +15,7 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       number: ${{ steps.version.outputs.number }}
     steps:
@@ -39,15 +39,15 @@ jobs:
     env:
       GRADIENT_NATIVE_VERSION: ${{ needs.version.outputs.number }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
-      - uses: microsoft/setup-msbuild@v2
+      - uses: microsoft/setup-msbuild@v3
         with:
           msbuild-architecture: x64
       - name: Build Rust core
@@ -88,7 +88,7 @@ jobs:
               if (!$launcher.CloseMainWindow() -or !$launcher.WaitForExit(5000)) { $launcher.Kill() }
             }
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: github.ref_type != 'tag'
         with:
           name: gradient-native-windows-x64
@@ -101,7 +101,7 @@ jobs:
           $output = 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
           tar.exe -a -cf gradient-native-windows-x64.zip -C $output .
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: github.ref_type == 'tag'
         with:
           name: gradient-native-release-windows-x64
@@ -117,7 +117,7 @@ jobs:
           foreach ($pattern in 'releases.win-x64.json', '*-full.nupkg', '*-Setup.exe') {
             if (!(Get-ChildItem -Path velopack -Filter $pattern -File)) { throw "Missing Velopack output: $pattern" }
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: gradient-native-velopack
           path: |
@@ -144,8 +144,8 @@ jobs:
             runner: macos-15-intel
             arch: x86_64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -209,7 +209,7 @@ jobs:
             bash .github/scripts/sign-macos-app.sh "$app" --sign - --timestamp=none
             bash .github/scripts/package-macos-dmg.sh "$app" "$MACOS_ARCH"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: gradient-native-macos-${{ matrix.arch }}
           path: |
@@ -221,13 +221,13 @@ jobs:
     name: Publish GitHub Release
     if: github.ref_type == 'tag'
     needs: [windows, macos]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     concurrency:
       group: native-release-${{ github.ref }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: gradient-native-*
           path: downloads
