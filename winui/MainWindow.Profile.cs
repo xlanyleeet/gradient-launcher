@@ -9,7 +9,8 @@ namespace Gradient;
 public sealed partial class MainWindow
 {
     private sealed record ContentEntry(string path, string name, string file, string? version,
-        bool enabled, bool locked, bool synced, string kind, bool has_update);
+        bool enabled, bool locked, bool synced, string kind, bool has_update, bool can_choose_version);
+    private sealed record InstalledModVersions(string? current_id, DiscoverVersion[] options);
     private sealed record WorldEntry(string id, string name, string? last_played);
     private string? loadedTab;
 
@@ -91,10 +92,42 @@ public sealed partial class MainWindow
                 new { method = "update_content", id = profile.id, path = entry.path });
             actions.Children.Add(update);
         }
+        if (entry.can_choose_version)
+        {
+            var version = new Button { Content = "Змінити версію" };
+            version.Click += async (_, _) => await ChangeModVersion(profile, entry);
+            actions.Children.Add(version);
+        }
         actions.Children.Add(remove);
         row.Children.Add(actions);
         return row;
     }
+
+    private Task ChangeModVersion(Profile profile, ContentEntry entry) => Run(async () =>
+    {
+        if (SelectedProfile?.id != profile.id) return;
+        var versions = await core.Call<InstalledModVersions>(new
+        {
+            method = "installed_mod_versions", id = profile.id, path = entry.path
+        });
+        var picker = new ComboBox { Header = "Версія", ItemsSource = versions.options, DisplayMemberPath = "Label" };
+        picker.SelectedItem = versions.options.FirstOrDefault(option => option.id == versions.current_id)
+            ?? versions.options.FirstOrDefault();
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock { Text = $"Встановлено · {entry.version ?? "—"}" });
+        if (versions.options.Length > 0)
+            content.Children.Add(picker);
+        else
+            content.Children.Add(new TextBlock { Text = "Сумісних версій немає." });
+        var dialog = Editor(entry.name, content, "Змінити версію");
+        void Validate() => dialog.IsPrimaryButtonEnabled =
+            picker.SelectedItem is DiscoverVersion version && version.id != versions.current_id;
+        picker.SelectionChanged += (_, _) => Validate();
+        Validate();
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && picker.SelectedItem is DiscoverVersion selected)
+            await ApplyProfileChange(new { method = "switch_mod_version", id = profile.id, path = entry.path,
+                version = selected.id }, $"Встановлено версію {selected.name}.");
+    }, waitForCore: true);
 
     private StackPanel WorldRow(Profile profile, WorldEntry world)
     {

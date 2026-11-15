@@ -72,6 +72,79 @@ fn compatible(
     })
 }
 
+pub(super) async fn installed_mod_versions(
+    id: &str,
+    path: &str,
+) -> super::Result<Value> {
+    let (profile, item) = installed_mod(id, path).await?;
+    let project = item.project.ok_or("Мод не пов’язаний із Modrinth.")?;
+    let current_id = item.version.map(|version| version.id);
+    let mut versions = cache::get_project_versions(
+        &project.id,
+        Some(data::CacheBehaviour::MustRevalidate),
+    )
+    .await?
+    .unwrap_or_default();
+    versions.sort_by_key(|version| std::cmp::Reverse(version.date_published));
+    let options = versions
+        .into_iter()
+        .filter(|version| compatible(version, Some(&profile)))
+        .map(|version| {
+            json!({
+                "id": version.id,
+                "name": version.version_number,
+                "channel": version.version_type,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({ "current_id": current_id, "options": options }))
+}
+
+pub(super) async fn switch_installed_mod(
+    id: &str,
+    path: &str,
+    version: &str,
+) -> super::Result<()> {
+    super::require_stopped(id).await?;
+    let (profile, item) = installed_mod(id, path).await?;
+    let project = item.project.ok_or("Мод не пов’язаний із Modrinth.")?;
+    let selected = cache::get_version(version, None)
+        .await?
+        .ok_or("Версію не знайдено.")?;
+    if selected.project_id != project.id
+        || !compatible(&selected, Some(&profile))
+    {
+        return Err("Версія несумісна або належить іншому моду.".into());
+    }
+    if item.version.is_some_and(|current| current.id == version) {
+        return Ok(());
+    }
+    Box::pin(instance::switch_project_version_with_dependencies(
+        id, path, version,
+    ))
+    .await?;
+    Ok(())
+}
+
+async fn installed_mod(
+    id: &str,
+    path: &str,
+) -> super::Result<(data::InstanceMetadata, data::ContentItem)> {
+    let profile = instance::get(id).await?.ok_or("Профіль не знайдено.")?;
+    let item = instance::get_content_items(id, None)
+        .await?
+        .into_iter()
+        .find(|item| {
+            item.file_path == path
+                && item.project_type == data::ProjectType::Mod
+        })
+        .ok_or("Мод не знайдено в профілі.")?;
+    if profile.quarantined || item.locked || item.synced_pack.is_some() {
+        return Err("Версію цього мода не можна змінити.".into());
+    }
+    Ok((profile, item))
+}
+
 pub(super) async fn handle(request: Request) -> super::Result<Value> {
     Ok(match request {
         Request::Search {

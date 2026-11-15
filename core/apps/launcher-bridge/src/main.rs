@@ -17,6 +17,18 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Library,
+    JobDiagnostics {
+        id: uuid::Uuid,
+    },
+    InstalledModVersions {
+        id: String,
+        path: String,
+    },
+    SwitchModVersion {
+        id: String,
+        path: String,
+        version: String,
+    },
     ProfileFolder {
         id: String,
     },
@@ -295,6 +307,12 @@ async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
 
 async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     Ok(match request {
+        Request::JobDiagnostics { id } => json!(install::job_support_details(id).await?),
+        Request::InstalledModVersions { id, path } => discover::installed_mod_versions(&id, &path).await?,
+        Request::SwitchModVersion { id, path, version } => {
+            discover::switch_installed_mod(&id, &path, &version).await?;
+            Value::Null
+        }
         Request::ProfileFolder { id } => json!(instance::get_full_path(&id).await?),
         Request::Groups { id } => {
             let profile = instance::get(&id).await?.ok_or("Профіль не знайдено.")?;
@@ -545,6 +563,8 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             let mut items = instance::get_content_items(&id, None).await?;
             items.sort_by_cached_key(|item| item.file_name.to_lowercase());
             json!(items.into_iter().map(|item| {
+                let can_choose_version = item.project_type == theseus::data::ProjectType::Mod
+                    && item.project.is_some() && !item.locked && item.synced_pack.is_none();
                 let name = item.project.map(|project| project.title)
                     .or_else(|| item.embedded_metadata.as_ref().and_then(|meta| meta.name.clone()))
                     .unwrap_or_else(|| item.file_name.clone());
@@ -560,6 +580,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                     "has_update": item.has_update,
                     "synced": item.synced_pack.is_some(),
                     "kind": item.project_type,
+                    "can_choose_version": can_choose_version,
                 })
             }).collect::<Vec<_>>())
         }

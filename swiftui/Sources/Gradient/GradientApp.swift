@@ -75,6 +75,7 @@ private struct ContentEntry: Decodable, Identifiable {
     let locked: Bool
     let synced: Bool
     let has_update: Bool
+    let can_choose_version: Bool
     var id: String { path }
 }
 
@@ -129,6 +130,8 @@ private struct LauncherView: View {
     @State private var selectedScreenshot = ""
     @State private var screenshotPreview: NSImage?
     @State private var pendingRemoval: (profileID: String, entry: ContentEntry)?
+    @State private var modVersion: ModVersionView.Target?
+    @State private var diagnosticsJob: Job?
     @State private var search = ""
     @State private var showLogin = false
     @State private var nickname = ""
@@ -317,6 +320,15 @@ private struct LauncherView: View {
         .sheet(item: $transfer) { operation in
             ProfileTransferView(core: core, operation: operation) { status = $0 }
         }
+        .sheet(item: $modVersion) { target in
+            ModVersionView(core: core, target: target) {
+                loadedTab = nil
+                status = "Версію мода змінено."
+            }
+        }
+        .sheet(item: $diagnosticsJob) { job in
+            JobDiagnosticsView(core: core, jobID: job.id)
+        }
         .alert("Видалити профіль?", isPresented: Binding(
             get: { profileToRemove != nil },
             set: { if !$0 { profileToRemove = nil } }
@@ -450,6 +462,12 @@ private struct LauncherView: View {
                     Button("Видалити") { pendingRemoval = (profile.id, entry) }
                     if entry.has_update {
                         Button("Оновити") { mutate("update_content", ["id": profile.id, "path": entry.path]) }
+                    }
+                    if entry.can_choose_version {
+                        Button("Змінити версію") {
+                            modVersion = .init(profileID: profile.id, path: entry.path,
+                                               name: entry.name, version: entry.version)
+                        }
                     }
                 }
                 .disabled(busy)
@@ -685,12 +703,15 @@ private struct LauncherView: View {
                     jobAction(job, job.paused ? "resume" : "pause", job.paused ? "Продовжити" : "Пауза")
                 }
                 if job.can_cancel { jobAction(job, "cancel", "Скасувати") }
-                if ["failed", "interrupted", "canceled"].contains(job.status) {
+                if ["failed", "interrupted"].contains(job.status) {
                     jobAction(job, "retry", "Повторити")
                 }
             }
             if let progress = job.progress { ProgressView(value: progress) }
             if let error = job.error { Text(error).font(.callout) }
+            if ["failed", "interrupted", "canceled"].contains(job.status) {
+                Button("Діагностика") { diagnosticsJob = job }
+            }
         }
         .padding(.vertical, 4)
     }

@@ -196,16 +196,34 @@ public sealed partial class MainWindow : Window
             row.Children.Add(new TextBlock { Text = $"{job.instance_id ?? "Модпак"} · {job.status} · {job.phase}", VerticalAlignment = VerticalAlignment.Center });
             if (job.can_pause) AddAction(row, job, job.paused ? "resume" : "pause", job.paused ? "Продовжити" : "Пауза");
             if (job.can_cancel) AddAction(row, job, "cancel", "Скасувати");
-            if (job.status is "failed" or "interrupted" or "canceled") AddAction(row, job, "retry", "Повторити");
+            if (job.status is "failed" or "interrupted") AddAction(row, job, "retry", "Повторити");
             var details = new StackPanel { Spacing = 4 };
             details.Children.Add(row);
             if (job.progress is double progress)
                 details.Children.Add(new ProgressBar { Maximum = 1, Value = progress });
             if (job.error is { } error)
                 details.Children.Add(new TextBlock { Text = error, TextWrapping = TextWrapping.Wrap });
+            if (job.status is "failed" or "interrupted" or "canceled")
+            {
+                var report = new Button { Content = "Діагностика" };
+                report.Click += async (_, _) => await ShowJobDiagnostics(job);
+                details.Children.Add(report);
+            }
             Jobs.Children.Add(details);
         }
     }
+
+    private Task ShowJobDiagnostics(Job job) => Run(async () =>
+    {
+        var report = await core.Call<string>(new { method = "job_diagnostics", id = job.job_id });
+        var output = new TextBlock { Text = report, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap };
+        var dialog = Editor("Діагностика встановлення", new ScrollViewer { Content = output, MaxHeight = 420 }, "Копіювати");
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        data.SetText(report);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        Status.Text = "Звіт скопійовано.";
+    }, waitForCore: true);
 
     private void AddAction(StackPanel row, Job job, string action, string label)
     {
