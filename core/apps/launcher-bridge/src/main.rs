@@ -17,6 +17,12 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Library,
+    CreateProfileShortcut {
+        id: String,
+    },
+    ResolveProfileShortcut {
+        url: String,
+    },
     UploadSkin {
         path: PathBuf,
         variant: SkinVariant,
@@ -319,6 +325,29 @@ async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
 
 async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     Ok(match request {
+        Request::CreateProfileShortcut { id } => {
+            let profile = instance::get(&id).await?.ok_or("Профіль не знайдено.")?;
+            let mut url = url::Url::parse("gradient-native://launch/instance")?;
+            url.query_pairs_mut().append_pair("id", &profile.instance.id);
+            json!(url.as_str())
+        }
+        Request::ResolveProfileShortcut { url } => {
+            let url = url::Url::parse(&url)?;
+            if url.scheme() != "gradient-native" || url.host_str() != Some("launch")
+                || url.path() != "/instance" || !url.username().is_empty()
+                || url.password().is_some() || url.port().is_some() || url.fragment().is_some() {
+                return Err("Непідтримуваний ярлик профілю.".into());
+            }
+            let mut fields = url.query_pairs();
+            let Some((key, value)) = fields.next() else {
+                return Err("Ярлик не містить профілю.".into());
+            };
+            if key != "id" || value.is_empty() || fields.next().is_some() {
+                return Err("Непідтримуваний ярлик профілю.".into());
+            }
+            let profile = instance::get(&value).await?.ok_or("Профіль не знайдено.")?;
+            json!({ "id": profile.instance.id, "name": profile.instance.name, "quarantined": profile.quarantined })
+        }
         Request::UploadSkin { path, variant } => {
             use std::io::Read;
             const LIMIT: u64 = 1024 * 1024;

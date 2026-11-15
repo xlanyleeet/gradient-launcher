@@ -76,7 +76,11 @@ public sealed partial class MainWindow : Window
     internal async Task ReceiveProjectLink(string url)
     {
         await started.Task;
-        await OpenProjectLink(url);
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+            uri.Scheme == "gradient-native" && uri.Host == "launch")
+            await OpenProfileShortcut(url);
+        else
+            await OpenProjectLink(url);
     }
 
     private async Task Run(Func<Task> action, bool waitForCore = false)

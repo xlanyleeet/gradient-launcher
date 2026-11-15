@@ -16,14 +16,17 @@ public sealed partial class MainWindow
     {
         try
         {
-            Microsoft.Windows.AppLifecycle.ActivationRegistrationManager.RegisterForProtocolActivation(
-                "gradient-native", "", "Gradient Launcher", "");
+            RegisterGradientScheme();
             Microsoft.Windows.AppLifecycle.ActivationRegistrationManager.RegisterForFileTypeActivation(
                 new[] { ".mrpack" }, "", "Gradient Launcher", Array.Empty<string>(), "");
             SettingsStatus.Text = "Gradient зареєстровано для посилань gradient-native:// та файлів .mrpack.";
         }
         catch (Exception error) { SettingsStatus.Text = error.Message; }
     }
+
+    private static void RegisterGradientScheme() =>
+        Microsoft.Windows.AppLifecycle.ActivationRegistrationManager.RegisterForProtocolActivation(
+            "gradient-native", "", "Gradient Launcher", "");
 
     private async void ManageJava(object sender, RoutedEventArgs e) => await Run(async () =>
     {

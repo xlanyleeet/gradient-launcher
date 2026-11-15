@@ -37,6 +37,12 @@ private struct Account: Decodable, Identifiable {
     let selected: Bool
 }
 
+private struct ShortcutProfile: Decodable {
+    let id: String
+    let name: String
+    let quarantined: Bool
+}
+
 private enum LibrarySheet: String, Identifiable {
     case create, rename, accounts, launch, groups
     var id: String { rawValue }
@@ -111,6 +117,7 @@ private struct LauncherView: View {
     @State private var showDiscover = false
     @State private var pendingPack: URL?
     @State private var catalogLink: String?
+    @State private var shortcutProfile: ShortcutProfile?
     @State private var transfer: ProfileTransferView.Operation?
     @State private var fileRefresh = 0
     @State private var coverKey: String?
@@ -255,11 +262,29 @@ private struct LauncherView: View {
         .onOpenURL { url in
             if url.isFileURL && url.pathExtension.lowercased() == "mrpack" {
                 pendingPack = url
+            } else if url.scheme == "gradient-native", url.host == "launch" {
+                Task { await openProfileShortcut(url) }
             } else if let scheme = url.scheme, ["gradient-native", "gradient", "modrinth"].contains(scheme) {
                 catalogLink = url.absoluteString
                 showDiscover = true
             }
         }
+        .confirmationDialog("Запустити Minecraft?", isPresented: Binding(
+            get: { shortcutProfile != nil },
+            set: { if !$0 { shortcutProfile = nil } }
+        ), presenting: shortcutProfile) { entry in
+            Button("Грати") {
+                Task {
+                    status = "Готуємо Minecraft…"
+                    do {
+                        _ = try await core.call("play", ["id": entry.id], as: EmptyReply.self)
+                        status = ""
+                        await perform(refresh)
+                    } catch { status = error.localizedDescription }
+                }
+            }
+            Button("Скасувати", role: .cancel) {}
+        } message: { Text($0.name) }
         .confirmationDialog("Імпортувати модпак?", isPresented: Binding(
             get: { pendingPack != nil },
             set: { if !$0 { pendingPack = nil } }
@@ -600,12 +625,46 @@ private struct LauncherView: View {
                     }
                 }
             }
+            Button("Створити ярлик") { createProfileShortcut(profile) }
             Divider()
             Button("Видалити профіль", role: .destructive) { profileToRemove = profile }
                 .disabled(profile.running)
         }
         .fixedSize()
         .disabled(busy)
+    }
+
+    private func createProfileShortcut(_ profile: Profile) {
+        let panel = NSSavePanel()
+        panel.directoryURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+        panel.allowedContentTypes = [UTType(filenameExtension: "webloc") ?? .data]
+        panel.nameFieldStringValue = "Gradient Minecraft.webloc"
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        Task {
+            do {
+                let link = try await core.call("create_profile_shortcut", ["id": profile.id], as: String.self)
+                let data = try PropertyListSerialization.data(fromPropertyList: ["URL": link], format: .xml, options: 0)
+                try data.write(to: destination, options: .atomic)
+                status = "Ярлик профілю збережено."
+            } catch { status = error.localizedDescription }
+        }
+    }
+
+    @MainActor private func openProfileShortcut(_ url: URL) async {
+        showDiscover = false
+        do {
+            let target = try await core.call("resolve_profile_shortcut", ["url": url.absoluteString], as: ShortcutProfile.self)
+            profiles = try await core.call("library", as: [Profile].self)
+            search = ""
+            selectedID = target.id
+            if target.quarantined {
+                status = "Цей профіль заблоковано."
+            } else if profile?.running == true {
+                status = "Minecraft уже запущено."
+            } else {
+                shortcutProfile = target
+            }
+        } catch { status = error.localizedDescription }
     }
 
     private func beginCreateProfile() {

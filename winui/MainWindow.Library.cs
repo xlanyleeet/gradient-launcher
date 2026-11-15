@@ -24,6 +24,44 @@ public sealed partial class MainWindow
     };
 
     public sealed record Group(string id, string name, bool selected);
+    private sealed record ShortcutProfile(string id, string name, bool quarantined);
+
+    private async void CreateProfileShortcut(object sender, RoutedEventArgs e) => await Run(async () =>
+    {
+        if (SelectedProfile is not { } profile) return;
+        var link = await core.Call<string>(new { method = "create_profile_shortcut", id = profile.id });
+        var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.Desktop,
+            SuggestedFileName = "Gradient Minecraft" };
+        picker.FileTypeChoices.Add("Ярлик Gradient", new[] { ".url" });
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+        var destination = await picker.PickSaveFileAsync();
+        if (destination is null) return;
+        RegisterGradientScheme();
+        await Windows.Storage.FileIO.WriteTextAsync(destination, $"[InternetShortcut]\r\nURL={link}\r\n");
+        Status.Text = "Ярлик профілю збережено.";
+    }, waitForCore: true);
+
+    private Task OpenProfileShortcut(string url) => Run(async () =>
+    {
+        ShowLibrary();
+        var target = await core.Call<ShortcutProfile>(new { method = "resolve_profile_shortcut", url });
+        Search.Text = "";
+        await Update();
+        var profile = library.FirstOrDefault(entry => entry.id == target.id);
+        if (profile is not null)
+        {
+            Profiles.SelectedItem = profile;
+            await LoadSelected();
+        }
+        if (target.quarantined || profile?.running == true)
+        {
+            Status.Text = target.quarantined ? "Цей профіль заблоковано." : "Minecraft уже запущено.";
+            return;
+        }
+        var dialog = Editor("Запустити Minecraft?", target.name, "Грати");
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            await ApplyProfileChange(new { method = "play", id = target.id });
+    }, waitForCore: true);
 
     private async void ManageSkin(object sender, RoutedEventArgs e) => await Run(async () =>
     {

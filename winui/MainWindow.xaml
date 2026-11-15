@@ -116,6 +116,7 @@
                                                 <MenuFlyoutItem Text="Дублювати" Click="DuplicateProfile"/>
                                                 <MenuFlyoutItem Text="Експортувати .mrpack" Click="ExportProfile"/>
                                                 <MenuFlyoutItem Text="Відкрити папку профілю" Click="OpenProfileFolder"/>
+                                        <MenuFlyoutItem Text="Створити ярлик" Click="CreateProfileShortcut"/>
                                                 <MenuFlyoutSeparator/>
                                                 <MenuFlyoutItem Text="Видалити профіль" Click="RemoveProfile"/>
                                             </MenuFlyout>

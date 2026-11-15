@@ -29,6 +29,8 @@
 
 У меню профілю доступні експорт `.mrpack` з вибором вмісту, групи та перевизначення Java й пам’яті. У бібліотеці можна імпортувати профілі з Prism Launcher, MultiMC, ATLauncher, GDLauncher і CurseForge. Вкладка **Сервери** підтримує локальні записи профілю й запуск гри з підключенням до вибраного сервера.
 
+Команда **Створити ярлик** у меню профілю зберігає `.url` на Windows або `.webloc` на macOS. Ярлик відкриває збережений профіль і пропонує запустити Minecraft. На macOS для цього використовуйте запакований `Gradient Launcher.app`, який реєструє схему посилань.
+
 ## Windows
 
 Потрібні Rust із toolchain workspace, Java 17 для Gradle, Visual Studio з C++ Build Tools і Windows SDK, .NET 8 та компоненти збірки WinUI 3 / MSIX. Для Microsoft-входу потрібен WebView2 Runtime.
