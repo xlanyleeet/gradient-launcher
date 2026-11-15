@@ -20,7 +20,7 @@ trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true; rm -rf -- "$
 
 release_url="https://github.com/$GITHUB_REPOSITORY/releases"
 appcast="appcast-macos-$arch.xml"
-archive="gradient-native-macos-$arch.tar.gz"
+archive="gradient-native-macos-$arch.dmg"
 plist="$app/Contents/Info.plist"
 plutil -insert SUPublicEDKey -string "$SPARKLE_PUBLIC_KEY" "$plist"
 plutil -insert SUFeedURL -string "$release_url/latest/download/$appcast" "$plist"
@@ -49,13 +49,16 @@ done
 "${sign[@]}" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
-ditto -c -k --sequesterRsrc --keepParent "$app" "$temp/notary.zip"
-xcrun notarytool submit "$temp/notary.zip" --key "$temp/notary.p8" --key-id "$MACOS_NOTARY_KEY_ID" \
+bash "$(dirname "$0")/package-macos-dmg.sh" "$app" "$arch"
+bundle_id=$(plutil -extract CFBundleIdentifier raw "$plist")
+codesign --timestamp --keychain "$keychain" --sign "$identity" --identifier "$bundle_id.dmg.$arch" "$archive"
+codesign --verify --verbose=2 "$archive"
+xcrun notarytool submit "$archive" --key "$temp/notary.p8" --key-id "$MACOS_NOTARY_KEY_ID" \
   --issuer "$MACOS_NOTARY_ISSUER" --wait --output-format json > "$temp/notary.json"
 jq -e '.status == "Accepted"' "$temp/notary.json"
-xcrun stapler staple "$app"
+xcrun stapler staple "$archive"
+xcrun stapler validate "$archive"
 
-tar -czf "$archive" -C "$(dirname "$app")" "$(basename "$app")"
 curl --fail --silent --show-error --location \
   https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-2.10.1.tar.xz \
   -o "$temp/Sparkle.tar.xz"
@@ -81,7 +84,7 @@ cat > "$appcast" <<EOF
       <sparkle:version>$GRADIENT_NATIVE_VERSION</sparkle:version>
       <sparkle:shortVersionString>$GRADIENT_NATIVE_VERSION</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <enclosure url="$release_url/download/$GITHUB_REF_NAME/$archive" sparkle:edSignature="$signature" length="$size" type="application/octet-stream"/>
+      <enclosure url="$release_url/download/$GITHUB_REF_NAME/$archive" sparkle:edSignature="$signature" length="$size" type="application/x-apple-diskimage"/>
     </item>
   </channel>
 </rss>

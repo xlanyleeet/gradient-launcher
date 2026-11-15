@@ -63,7 +63,7 @@ GRADIENT_CORE="$root/core/target/release/gradient-core" swift run Gradient
 
 Workflow **Build Gradient Native** запускається після push у `native/github-actions`. Після додавання workflow до default branch його також можна запускати вручну в **Actions → Build Gradient Native → Run workflow**.
 
-У **Artifacts** будуть збірки для Windows x64, macOS Apple Silicon (`arm64`) і macOS Intel (`x86_64`). Для Windows розпакуйте весь архів і відкрийте `Gradient.WinUI.exe`. Для macOS 15+ розпакуйте `.tar.gz` для свого процесора й відкрийте `Gradient Launcher.app`. Це збірки для тестування. Для Windows потрібен .NET 8 Desktop Runtime, а для Microsoft-входу — WebView2 Runtime.
+У **Artifacts** будуть збірки для Windows x64, macOS Apple Silicon (`arm64`) і macOS Intel (`x86_64`). Для Windows розпакуйте весь архів і відкрийте `Gradient.WinUI.exe`. Для macOS 15+ виберіть `gradient-native-macos-arm64.dmg` або `gradient-native-macos-x86_64.dmg`, відкрийте образ і перетягніть `Gradient Launcher.app` на ярлик **Applications** («Програми»). Це збірки для тестування. Для Windows потрібен .NET 8 Desktop Runtime, а для Microsoft-входу — WebView2 Runtime.
 
 ### Релізи й оновлення
 

@@ -38,11 +38,17 @@ fn version(value: &str) -> Option<[u32; 3]> {
     parts.next().is_none().then_some(result)
 }
 
-fn package() -> super::Result<&'static str> {
+fn packages() -> super::Result<&'static [&'static str]> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("windows", "x86_64") => Ok("gradient-native-windows-x64.zip"),
-        ("macos", "aarch64") => Ok("gradient-native-macos-arm64.tar.gz"),
-        ("macos", "x86_64") => Ok("gradient-native-macos-x86_64.tar.gz"),
+        ("windows", "x86_64") => Ok(&["gradient-native-windows-x64.zip"]),
+        ("macos", "aarch64") => Ok(&[
+            "gradient-native-macos-arm64.dmg",
+            "gradient-native-macos-arm64.tar.gz",
+        ]),
+        ("macos", "x86_64") => Ok(&[
+            "gradient-native-macos-x86_64.dmg",
+            "gradient-native-macos-x86_64.tar.gz",
+        ]),
         _ => Err("Для цієї платформи немає релізного пакета Gradient.".into()),
     }
 }
@@ -52,7 +58,7 @@ pub(super) async fn check() -> super::Result<Value> {
         .unwrap_or(env!("CARGO_PKG_VERSION"));
     let installed_version =
         version(installed).ok_or("Невідома версія Gradient.")?;
-    let package = package()?;
+    let packages = packages()?;
     let client = reqwest::Client::builder()
         .user_agent(format!("Gradient-Native/{installed}"))
         .timeout(Duration::from_secs(12))
@@ -73,14 +79,7 @@ pub(super) async fn check() -> super::Result<Value> {
             .await?;
         let last = releases.len() < PAGE_SIZE;
         for entry in releases {
-            if entry.draft
-                || entry.prerelease
-                || !entry.assets.iter().any(|asset| {
-                    asset.name == package
-                        && asset.state == "uploaded"
-                        && asset.size > 0
-                })
-            {
+            if entry.draft || entry.prerelease {
                 continue;
             }
             let Some(number) = entry
@@ -91,9 +90,17 @@ pub(super) async fn check() -> super::Result<Value> {
                 continue;
             };
             if number > installed_version
-                && latest.as_ref().is_none_or(|(old, _)| number > *old)
+                && latest.as_ref().is_none_or(|(old, _, _)| number > *old)
             {
-                latest = Some((number, entry.tag_name));
+                if let Some(&package) = packages.iter().find(|&&package| {
+                    entry.assets.iter().any(|asset| {
+                        asset.name == package
+                            && asset.state == "uploaded"
+                            && asset.size > 0
+                    })
+                }) {
+                    latest = Some((number, entry.tag_name, package));
+                }
             }
         }
         if last {
@@ -102,7 +109,7 @@ pub(super) async fn check() -> super::Result<Value> {
         page += 1;
     }
 
-    let available = latest.map(|(_, tag)| json!({
+    let available = latest.map(|(_, tag, package)| json!({
         "version": tag.trim_start_matches(RELEASE_PREFIX),
         "download_url": format!("https://github.com/{REPOSITORY}/releases/download/{tag}/{package}"),
     }));

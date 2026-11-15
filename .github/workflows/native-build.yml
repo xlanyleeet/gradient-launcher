@@ -130,7 +130,7 @@ jobs:
       - name: Build SwiftUI
         working-directory: swiftui
         run: swift build -c release
-      - name: Archive macOS preview
+      - name: Package macOS drag-and-drop installer
         shell: bash
         env:
           MACOS_ARCH: ${{ matrix.arch }}
@@ -167,13 +167,13 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == tag && -n "$SPARKLE_PUBLIC_KEY" ]]; then
             bash .github/scripts/package-sparkle.sh "$app" "$MACOS_ARCH"
           else
-            tar -czf "gradient-native-macos-$MACOS_ARCH.tar.gz" -C "$stage" "Gradient Launcher.app"
+            bash .github/scripts/package-macos-dmg.sh "$app" "$MACOS_ARCH"
           fi
       - uses: actions/upload-artifact@v4
         with:
           name: gradient-native-macos-${{ matrix.arch }}
           path: |
-            gradient-native-macos-${{ matrix.arch }}.tar.gz
+            gradient-native-macos-${{ matrix.arch }}.dmg
             appcast-macos-${{ matrix.arch }}.xml
           if-no-files-found: error
 
@@ -200,8 +200,8 @@ jobs:
           tag="$GITHUB_REF_NAME"
           assets=(
             downloads/gradient-native-release-windows-x64/gradient-native-windows-x64.zip
-            downloads/gradient-native-macos-arm64/gradient-native-macos-arm64.tar.gz
-            downloads/gradient-native-macos-x86_64/gradient-native-macos-x86_64.tar.gz
+            downloads/gradient-native-macos-arm64/gradient-native-macos-arm64.dmg
+            downloads/gradient-native-macos-x86_64/gradient-native-macos-x86_64.dmg
           )
           for path in "${assets[@]}"; do test -s "$path"; done
           velopack=downloads/gradient-native-velopack
