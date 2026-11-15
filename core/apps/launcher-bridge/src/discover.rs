@@ -79,10 +79,10 @@ pub(super) async fn installed_mod_versions(
     let (profile, item) = installed_mod(id, path).await?;
     let project = item.project.ok_or("Мод не пов’язаний із Modrinth.")?;
     let current_id = item.version.map(|version| version.id);
-    let mut versions = cache::get_project_versions(
+    let mut versions = Box::pin(cache::get_project_versions(
         &project.id,
         Some(data::CacheBehaviour::MustRevalidate),
-    )
+    ))
     .await?
     .unwrap_or_default();
     versions.sort_by_key(|version| std::cmp::Reverse(version.date_published));
@@ -131,7 +131,7 @@ async fn installed_mod(
     path: &str,
 ) -> super::Result<(data::InstanceMetadata, data::ContentItem)> {
     let profile = instance::get(id).await?.ok_or("Профіль не знайдено.")?;
-    let item = instance::get_content_items(id, None)
+    let item = Box::pin(instance::get_content_items(id, None))
         .await?
         .into_iter()
         .find(|item| {
