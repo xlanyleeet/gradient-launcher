@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <ApplicationIcon>Assets/Launcher.ico</ApplicationIcon>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Platform>x64</Platform>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -15,6 +16,8 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <PackageReference Include="Velopack" Version="1.2.161" />
     <Content Include="Assets/Cover.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets/Launcher.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets/Launcher.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../core/apps/app/icons/apple.icon/Assets/Modrinth logo.svg"
              Link="Assets/Modrinth.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../swiftui/Sources/Gradient/Resources/InterfaceStrings.json"

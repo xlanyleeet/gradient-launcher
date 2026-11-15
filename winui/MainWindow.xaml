@@ -8,7 +8,7 @@
         <TitleBar x:Name="WindowTitleBar" Title="Gradient Launcher"
                   IsPaneToggleButtonVisible="True" PaneToggleRequested="ToggleNavigationPane">
             <TitleBar.IconSource>
-                <SymbolIconSource Symbol="Home"/>
+                <BitmapIconSource UriSource="ms-appx:///Assets/Launcher.png" ShowAsMonochrome="False"/>
             </TitleBar.IconSource>
             <TitleBar.Resources>
                 <HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Stretch</HorizontalAlignment>

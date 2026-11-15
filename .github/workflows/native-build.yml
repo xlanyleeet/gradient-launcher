@@ -59,7 +59,7 @@ jobs:
         shell: pwsh
         run: |
           $output = 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
-          foreach ($path in 'Gradient.WinUI.exe', 'gradient-core.exe', 'Assets/Cover.png', 'Assets/Modrinth.svg', 'InterfaceStrings.json') {
+          foreach ($path in 'Gradient.WinUI.exe', 'gradient-core.exe', 'Assets/Cover.png', 'Assets/Launcher.png', 'Assets/Launcher.ico', 'Assets/Modrinth.svg', 'InterfaceStrings.json') {
             if (!(Test-Path (Join-Path $output $path) -PathType Leaf)) {
               throw "Build output missing: $path"
             }
@@ -112,7 +112,7 @@ jobs:
         run: |
           dotnet tool install vpk --tool-path "$env:RUNNER_TEMP/vpk" --version 1.2.161
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          & "$env:RUNNER_TEMP/vpk/vpk.exe" pack --packId GradientNative --packVersion $env:GRADIENT_NATIVE_VERSION --packDir 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64' --mainExe Gradient.WinUI.exe --packTitle 'Gradient Launcher' --channel win-x64 --runtime win-x64 --framework net8-x64-desktop --outputDir velopack
+          & "$env:RUNNER_TEMP/vpk/vpk.exe" pack --packId GradientNative --packVersion $env:GRADIENT_NATIVE_VERSION --packDir 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64' --mainExe Gradient.WinUI.exe --packTitle 'Gradient Launcher' --icon winui/Assets/Launcher.ico --channel win-x64 --runtime win-x64 --framework net8-x64-desktop --outputDir velopack
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           foreach ($pattern in 'releases.win-x64.json', '*-full.nupkg', '*-Setup.exe') {
             if (!(Get-ChildItem -Path velopack -Filter $pattern -File)) { throw "Missing Velopack output: $pattern" }
@@ -184,6 +184,7 @@ jobs:
           plutil -lint "$app/Contents/Info.plist"
           cp "$output/Gradient" core/target/release/gradient-core "$app/Contents/MacOS/"
           cp swiftui/Sources/Gradient/Resources/{Cover.png,InterfaceStrings.json} "$app/Contents/Resources/"
+          cp swiftui/Launcher.icns "$app/Contents/Resources/"
           framework="$(find swiftui/.build/artifacts -type d -path '*/macos-*/Sparkle.framework' -print -quit)"
           test -d "$framework"
           ditto "$framework" "$app/Contents/Frameworks/Sparkle.framework"

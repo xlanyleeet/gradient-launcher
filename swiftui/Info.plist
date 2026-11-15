@@ -8,6 +8,8 @@
     <string>com.gradient.launcher.native</string>
     <key>CFBundleName</key>
     <string>Gradient Launcher</string>
+    <key>CFBundleIconFile</key>
+    <string>Launcher.icns</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

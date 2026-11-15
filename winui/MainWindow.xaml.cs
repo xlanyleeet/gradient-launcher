@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
         InitializeAppearance();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Launcher.ico"));
         Navigation.SelectedItem = LibraryNavigation;
         ready = true;
         AppWindow.Resize(new SizeInt32(1160, 770));
