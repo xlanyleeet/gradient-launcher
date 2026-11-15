@@ -9,7 +9,7 @@
                         <SolidColorBrush x:Key="GradientTitleBar" Color="#E0F2F0"/>
                         <SolidColorBrush x:Key="GradientNavigation" Color="#D1EAE7"/>
                         <Color x:Key="GradientCoverClear">#00A8DED7</Color>
-                        <Color x:Key="GradientCoverFade">#DDA8DED7</Color>
+                        <Color x:Key="GradientCoverFade">#B3A8DED7</Color>
                         <Color x:Key="GradientCoverSolid">#FFA8DED7</Color>
                     </ResourceDictionary>
                     <ResourceDictionary x:Key="Dark">
@@ -17,7 +17,7 @@
                         <SolidColorBrush x:Key="GradientTitleBar" Color="#141F27"/>
                         <SolidColorBrush x:Key="GradientNavigation" Color="#19262C"/>
                         <Color x:Key="GradientCoverClear">#00172E32</Color>
-                        <Color x:Key="GradientCoverFade">#DD172E32</Color>
+                        <Color x:Key="GradientCoverFade">#B3172E32</Color>
                         <Color x:Key="GradientCoverSolid">#FF172E32</Color>
                     </ResourceDictionary>
                     <ResourceDictionary x:Key="HighContrast">
@@ -44,48 +44,53 @@
                 <HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Stretch</HorizontalAlignment>
             </TitleBar.Resources>
             <TitleBar.Content>
-                <Grid ColumnSpacing="12" Margin="14,0,12,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <AutoSuggestBox x:Name="Search" MaxWidth="520" VerticalAlignment="Center" QueryIcon="Find"
+                <Grid Margin="14,0,12,0">
+                    <AutoSuggestBox x:Name="Search" MaxWidth="760" HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Center" QueryIcon="Find"
                                     PlaceholderText="{local:Translate Key='Пошук профілів'}" AutomationProperties.Name="{local:Translate Key='Пошук профілів'}"
                                     TextChanged="SearchChanged" QuerySubmitted="SubmitProfileSearch"/>
-                    <Button Grid.Column="1" Width="36" Height="34" Padding="0" VerticalAlignment="Center"
-                            ToolTipService.ToolTip="{local:Translate Key='Створити або імпортувати профіль'}"
-                            AutomationProperties.Name="{local:Translate Key='Створити або імпортувати профіль'}">
-                        <SymbolIcon Symbol="Add"/>
-                        <Button.Flyout>
-                            <MenuFlyout>
-                                <MenuFlyoutItem Text="{local:Translate Key='Новий профіль'}" Click="CreateProfile"/>
-                                <MenuFlyoutItem Text="{local:Translate Key='Імпортувати .mrpack'}" Click="Import"/>
-                                <MenuFlyoutItem Text="{local:Translate Key='Імпорт з лаунчера'}" Click="ImportLauncher"/>
-                            </MenuFlyout>
-                        </Button.Flyout>
-                    </Button>
                 </Grid>
             </TitleBar.Content>
         </TitleBar>
         <NavigationView x:Name="Navigation" Grid.Row="1" Background="{ThemeResource GradientNavigation}"
-                        PaneDisplayMode="LeftCompact" IsPaneOpen="False" CompactPaneLength="56" OpenPaneLength="240"
+                        PaneDisplayMode="LeftCompact" IsPaneOpen="True" CompactPaneLength="56" OpenPaneLength="240"
                         IsBackButtonVisible="Collapsed" IsPaneToggleButtonVisible="False"
                         AlwaysShowHeader="False" IsSettingsVisible="False"
                         ItemInvoked="Navigate" PaneOpening="ShowProfileList" PaneClosing="HideProfileList">
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="LibraryNavigation" Content="{local:Translate Key='Бібліотека'}" Icon="Library"
                                     ToolTipService.ToolTip="{local:Translate Key='Бібліотека'}"/>
-                <NavigationViewItem x:Name="DiscoverNavigation" Content="{local:Translate Key='Каталог Modrinth'}" Icon="Find"
-                                    ToolTipService.ToolTip="{local:Translate Key='Каталог Modrinth'}"/>
+                <NavigationViewItem x:Name="DiscoverNavigation" Content="{local:Translate Key='Каталог Modrinth'}"
+                                    ToolTipService.ToolTip="{local:Translate Key='Каталог Modrinth'}">
+                    <NavigationViewItem.Icon>
+                        <ImageIcon Width="20" Height="20">
+                            <ImageIcon.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/Modrinth.svg"/>
+                            </ImageIcon.Source>
+                        </ImageIcon>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="AddProfileNavigation" Icon="Add" SelectsOnInvoked="False"
+                                    Content="{local:Translate Key='Додати профіль'}"
+                                    ToolTipService.ToolTip="{local:Translate Key='Створити або імпортувати профіль'}">
+                    <FlyoutBase.AttachedFlyout>
+                        <MenuFlyout Placement="RightEdgeAlignedTop">
+                            <MenuFlyoutItem Text="{local:Translate Key='Новий профіль'}" Click="CreateProfile"/>
+                            <MenuFlyoutItem Text="{local:Translate Key='Імпортувати .mrpack'}" Click="Import"/>
+                            <MenuFlyoutItem Text="{local:Translate Key='Імпорт з лаунчера'}" Click="ImportLauncher"/>
+                        </MenuFlyout>
+                    </FlyoutBase.AttachedFlyout>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
                 <NavigationViewItem x:Name="SettingsNavigation" Content="{local:Translate Key='Налаштування'}" Icon="Setting"
                                     ToolTipService.ToolTip="{local:Translate Key='Налаштування'}"/>
             </NavigationView.FooterMenuItems>
             <NavigationView.PaneCustomContent>
-                <StackPanel x:Name="ProfilePane" Visibility="Collapsed" Spacing="2" Margin="8,12,8,0">
+                <StackPanel x:Name="ProfilePane" Spacing="2" Margin="8,12,8,0">
                     <TextBlock Text="{local:Translate Key='Профілі'}" Margin="10,0,0,6" Style="{StaticResource CaptionTextBlockStyle}"/>
-                    <ListView x:Name="Profiles" Margin="4,0" MaxHeight="360" SelectionChanged="Select">
+                    <ListView x:Name="Profiles" Margin="4,0" MaxHeight="360" SelectionChanged="Select"
+                              IsItemClickEnabled="True" ItemClick="OpenSidebarProfile">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -98,8 +103,9 @@
                 </StackPanel>
             </NavigationView.PaneCustomContent>
             <NavigationView.PaneFooter>
-                    <Button x:Name="AccountsButton" Width="44" Height="44" Padding="0"
-                            Margin="2,3" HorizontalAlignment="Left" CornerRadius="22"
+                    <Button x:Name="AccountsButton" Width="40" Height="40" Padding="0"
+                            Margin="8,3,0,3" HorizontalAlignment="Left" HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center" CornerRadius="20"
                             Background="Transparent" BorderThickness="0"
                             AutomationProperties.Name="{local:Translate Key='Акаунти Minecraft'}" ToolTipService.ToolTip="{local:Translate Key='Акаунти Minecraft'}">
                         <PersonPicture x:Name="AccountAvatar" Width="32" Height="32"
@@ -121,12 +127,13 @@
                 <ScrollViewer x:Name="LibraryPage">
                     <StackPanel>
                         <Grid Height="350">
-                            <Image x:Name="Cover" Stretch="UniformToFill" Source="ms-appx:///Assets/Cover.png"/>
+                            <Image x:Name="Cover" Stretch="UniformToFill" Source="ms-appx:///Assets/Cover.png"
+                                   AutomationProperties.AccessibilityView="Raw"/>
                             <Rectangle>
                                 <Rectangle.Fill>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                        <GradientStop Color="{ThemeResource GradientCoverClear}" Offset=".24"/>
-                                        <GradientStop Color="{ThemeResource GradientCoverFade}" Offset=".82"/>
+                                        <GradientStop Color="{ThemeResource GradientCoverClear}" Offset=".38"/>
+                                        <GradientStop Color="{ThemeResource GradientCoverFade}" Offset=".76"/>
                                         <GradientStop Color="{ThemeResource GradientCoverSolid}" Offset="1"/>
                                     </LinearGradientBrush>
                                 </Rectangle.Fill>
@@ -257,10 +264,12 @@
                         <TextBlock Text="{local:Translate Key='Каталог Modrinth'}" Style="{StaticResource TitleTextBlockStyle}"/>
                     </StackPanel>
                     <StackPanel Grid.Row="1" Spacing="8">
-                        <ComboBox x:Name="DiscoverKind" Header="{local:Translate Key='Тип контенту'}" SelectedIndex="0" SelectionChanged="DiscoverFilterChanged">
-                            <ComboBoxItem Content="{local:Translate Key='Модпаки'}" Tag="modpack"/>
-                            <ComboBoxItem Content="{local:Translate Key='Моди для вибраного профілю'}" Tag="mod"/>
-                        </ComboBox>
+                        <Pivot x:Name="DiscoverKind" AutomationProperties.Name="{local:Translate Key='Тип контенту'}"
+                               SelectedIndex="0" SelectionChanged="DiscoverFilterChanged">
+                            <PivotItem Header="{local:Translate Key='Модпаки'}" Tag="modpack"/>
+                            <PivotItem Header="{local:Translate Key='Моди'}" Tag="mod"
+                                       AutomationProperties.Name="{local:Translate Key='Моди для вибраного профілю'}"/>
+                        </Pivot>
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>

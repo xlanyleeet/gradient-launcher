@@ -59,7 +59,7 @@ jobs:
         shell: pwsh
         run: |
           $output = 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
-          foreach ($path in 'Gradient.WinUI.exe', 'gradient-core.exe', 'Assets/Cover.png', 'InterfaceStrings.json') {
+          foreach ($path in 'Gradient.WinUI.exe', 'gradient-core.exe', 'Assets/Cover.png', 'Assets/Modrinth.svg', 'InterfaceStrings.json') {
             if (!(Test-Path (Join-Path $output $path) -PathType Leaf)) {
               throw "Build output missing: $path"
             }

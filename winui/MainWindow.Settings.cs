@@ -158,7 +158,6 @@ public sealed partial class MainWindow
         DiscoverPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
         Navigation.SelectedItem = SettingsNavigation;
-        Navigation.IsPaneOpen = false;
         MemorySetting.Focus(FocusState.Programmatic);
     }, waitForCore: true);
 

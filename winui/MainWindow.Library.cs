@@ -124,6 +124,7 @@ public sealed partial class MainWindow
 
     private async void CreateProfile(object sender, RoutedEventArgs e) => await Run(async () =>
     {
+        ShowLibrary();
         var versions = await core.Call<string[]>(new { method = "game_versions" });
         var name = new TextBox { Header = Tr("Назва"), PlaceholderText = Tr("Мій профіль") };
         var version = new ComboBox { Header = "Minecraft", ItemsSource = versions, SelectedIndex = versions.Length == 0 ? -1 : 0 };

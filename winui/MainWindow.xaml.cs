@@ -264,11 +264,7 @@ public sealed partial class MainWindow : Window
     private async void Select(object sender, SelectionChangedEventArgs e)
     {
         if (!ready || filteringProfiles) return;
-        if (SelectedProfile is not null)
-        {
-            ShowLibrary();
-            Navigation.IsPaneOpen = false;
-        }
+        if (SelectedProfile is not null) ShowLibrary();
         await Run(LoadSelected);
     }
     private async void Refresh(object sender, RoutedEventArgs e) => await Run(async () =>
@@ -297,6 +293,7 @@ public sealed partial class MainWindow : Window
 
     private async void Import(object sender, RoutedEventArgs e) => await Run(async () =>
     {
+        ShowLibrary();
         var picker = new FileOpenPicker();
         picker.FileTypeFilter.Add(".mrpack");
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));

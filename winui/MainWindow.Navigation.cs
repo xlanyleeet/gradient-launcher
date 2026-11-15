@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 
 namespace Gradient;
 
@@ -20,11 +21,18 @@ public sealed partial class MainWindow
             await OpenDiscover();
         else if (Equals(args.InvokedItemContainer, SettingsNavigation))
             await OpenSettings();
+        else if (Equals(args.InvokedItemContainer, AddProfileNavigation))
+            FlyoutBase.ShowAttachedFlyout(AddProfileNavigation);
         else if (Equals(args.InvokedItemContainer, LibraryNavigation))
         {
             ShowLibrary();
             Navigation.IsPaneOpen = true;
         }
+    }
+
+    private void OpenSidebarProfile(object sender, ItemClickEventArgs args)
+    {
+        ShowLibrary();
     }
 
     private void SubmitProfileSearch(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)

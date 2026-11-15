@@ -34,7 +34,6 @@ public sealed partial class MainWindow
         LibraryPage.Visibility = Visibility.Collapsed;
         DiscoverPage.Visibility = Visibility.Visible;
         Navigation.SelectedItem = DiscoverNavigation;
-        Navigation.IsPaneOpen = false;
         DiscoverQuery.Focus(FocusState.Programmatic);
     }
 
@@ -67,15 +66,17 @@ public sealed partial class MainWindow
     {
         if (ready && DiscoverPage.Visibility == Visibility.Visible)
         {
-            DiscoverPackFilters.Visibility = (DiscoverKind.SelectedItem as ComboBoxItem)?.Tag as string == "modpack"
+            DiscoverPackFilters.Visibility = DiscoverContentKind == "modpack"
                 ? Visibility.Visible : Visibility.Collapsed;
             await SubmitDiscoverSearch();
         }
     }
 
+    private string DiscoverContentKind => (DiscoverKind.SelectedItem as PivotItem)?.Tag as string ?? "modpack";
+
     private SearchSpec CurrentDiscoverSearch()
     {
-        var kind = (DiscoverKind.SelectedItem as ComboBoxItem)?.Tag as string ?? "modpack";
+        var kind = DiscoverContentKind;
         return new SearchSpec(DiscoverQuery.Text.Trim(), kind, kind == "mod" ? SelectedProfile?.id : null,
             (DiscoverSort.SelectedItem as ComboBoxItem)?.Tag as string,
             kind == "modpack" ? DiscoverGameVersion.Text.Trim() : null,

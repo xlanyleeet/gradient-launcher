@@ -553,8 +553,8 @@ private struct LauncherView: View {
                         .accessibilityHidden(true)
                 }
                 LinearGradient(stops: [
-                    .init(color: tint.opacity(0), location: 0.24),
-                    .init(color: tint.opacity(0.88), location: 0.82),
+                    .init(color: tint.opacity(0), location: 0.38),
+                    .init(color: tint.opacity(0.70), location: 0.76),
                     .init(color: tint, location: 1)
                 ], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 11) {

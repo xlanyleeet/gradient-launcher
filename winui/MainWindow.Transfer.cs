@@ -36,6 +36,7 @@ public sealed partial class MainWindow
 
     private async void ImportLauncher(object sender, RoutedEventArgs e) => await Run(async () =>
     {
+        ShowLibrary();
         var launchers = new[] { "PrismLauncher", "MultiMC", "ATLauncher", "GDLauncher", "Curseforge" };
         var select = new ComboBox { Header = Tr("Лаунчер"), ItemsSource = launchers, SelectedIndex = 0 };
         if (await Editor(Tr("Імпорт з іншого лаунчера"), select, Tr("Вибрати папку")).ShowAsync() != ContentDialogResult.Primary)
