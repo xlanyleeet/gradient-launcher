@@ -59,6 +59,8 @@ cd "$root/swiftui"
 GRADIENT_CORE="$root/core/target/release/gradient-core" swift run Gradient
 ```
 
+GitHub Actions збирає обидві архітектури з Xcode 26.3. На macOS 26 Tahoe стандартні елементи SwiftUI підхоплюють Liquid Glass, а мінімальна версія для запуску залишається macOS 15.
+
 ## GitHub Actions
 
 Workflow **Build Gradient Native** запускається після push у `native/github-actions`. Після додавання workflow до default branch його також можна запускати вручну в **Actions → Build Gradient Native → Run workflow**.

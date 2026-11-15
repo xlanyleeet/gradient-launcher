@@ -132,6 +132,7 @@ jobs:
     needs: version
     env:
       GRADIENT_NATIVE_VERSION: ${{ needs.version.outputs.number }}
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     strategy:
       fail-fast: false
       matrix:
@@ -148,6 +149,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Verify Xcode and macOS SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
       - name: Build Rust core
         working-directory: core
         run: cargo build --locked --release -p gradient-core
@@ -167,6 +172,12 @@ jobs:
           MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
         run: |
           output="$(swift build --package-path swiftui -c release --show-bin-path)"
+          build_info="$(xcrun vtool -show-build "$output/Gradient")"
+          printf '%s\n' "$build_info"
+          printf '%s\n' "$build_info" | awk '
+            $1 == "sdk" && $2 ~ /^26\./ { sdk = 1 }
+            $1 == "minos" && $2 == "15.0" { minimum = 1 }
+            END { exit !(sdk && minimum) }'
           for binary in "$output/Gradient" core/target/release/gradient-core; do
             actual="$(lipo -archs "$binary")"
             printf '%s: %s\n' "$binary" "$actual"
