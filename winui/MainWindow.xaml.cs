@@ -25,6 +25,7 @@ public sealed partial class MainWindow : Window
     private Profile? SelectedProfile => Profiles.SelectedItem as Profile;
     private string? coverId;
     private bool busy;
+    private readonly SemaphoreSlim coreOperation = new(1);
     private bool closed;
     private bool ready;
     private bool filteringProfiles;
@@ -64,9 +65,18 @@ public sealed partial class MainWindow : Window
         if (!closed) timer.Start();
     }
 
-    private async Task Run(Func<Task> action)
+    private async Task Run(Func<Task> action, bool waitForCore = false)
     {
-        if (busy || closed) return;
+        if (closed) return;
+        if (waitForCore)
+            await coreOperation.WaitAsync();
+        else if (!coreOperation.Wait(0))
+            return;
+        if (closed)
+        {
+            coreOperation.Release();
+            return;
+        }
         busy = true;
         try { await action(); }
         catch (Exception error) { Status.Text = error.Message; }
@@ -74,6 +84,7 @@ public sealed partial class MainWindow : Window
         {
             busy = false;
             if (closed) core.Dispose();
+            coreOperation.Release();
         }
     }
 

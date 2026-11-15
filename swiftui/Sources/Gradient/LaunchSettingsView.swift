@@ -24,6 +24,7 @@ struct LaunchSettingsView: View {
     @State private var loaded = false
     @State private var busy = false
     @State private var status = ""
+    @State private var showJava = false
 
     private var values: LaunchSettings? {
         guard let memory = UInt32(memory), memory > 0,
@@ -35,6 +36,9 @@ struct LaunchSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Java") {
+                Button("Інсталяції Java…") { showJava = true }
+            }
             Section("Пам’ять і вікно гри") {
                 TextField("Максимум пам’яті (МіБ)", text: $memory)
                 Toggle("На весь екран", isOn: $fullscreen)
@@ -60,6 +64,7 @@ struct LaunchSettingsView: View {
         .formStyle(.grouped)
         .frame(width: 480)
         .task { await load() }
+        .sheet(isPresented: $showJava) { JavaRuntimesView(core: core) }
     }
 
     @MainActor private func load() async {

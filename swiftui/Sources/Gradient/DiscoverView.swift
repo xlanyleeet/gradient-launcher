@@ -10,6 +10,7 @@ struct DiscoverView: View {
         let name: String
         let description: String
         let author: String
+        let icon: URL?
     }
 
     private struct Version: Decodable, Identifiable {
@@ -30,6 +31,7 @@ struct DiscoverView: View {
     @State private var target: String?
     @State private var results: [Hit] = []
     @State private var nextOffset: UInt32?
+    @State private var currentOffset: UInt32 = 0
     @State private var selected: Hit?
     @State private var versions: [Version] = []
     @State private var version = ""
@@ -42,6 +44,8 @@ struct DiscoverView: View {
                 Text("Модпаки").tag("modpack")
                 Text("Моди для вибраного профілю").tag("mod")
             }
+            .disabled(busy)
+            .onChange(of: kind) { beginSearch() }
             HStack {
                 TextField("Знайти на Modrinth", text: $query)
                     .onSubmit { beginSearch() }
@@ -50,10 +54,19 @@ struct DiscoverView: View {
             }
             List(results) { hit in
                 Button { showVersions(hit) } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(hit.name).font(.headline)
-                        Text(hit.author).foregroundStyle(.secondary)
-                        Text(hit.description)
+                    HStack(alignment: .top, spacing: 12) {
+                        AsyncImage(url: hit.icon?.scheme == "https" ? hit.icon : nil) { image in
+                            image.resizable().scaledToFit()
+                        } placeholder: {
+                            Image(systemName: "shippingbox").foregroundStyle(.secondary)
+                        }
+                        .frame(width: 44, height: 44)
+                        .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(hit.name).font(.headline)
+                            Text(hit.author).foregroundStyle(.secondary)
+                            Text(hit.description)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -65,6 +78,13 @@ struct DiscoverView: View {
                 if busy { ProgressView().controlSize(.small) }
                 if !status.isEmpty { Text(status) }
                 Spacer()
+                if currentOffset > 0 {
+                    Button("Попередня сторінка") {
+                        let offset = currentOffset >= 20 ? currentOffset - 20 : 0
+                        Task { await loadPage(offset) }
+                    }
+                    .disabled(busy)
+                }
                 if let nextOffset {
                     Button("Наступна сторінка") { Task { await loadPage(nextOffset) } }
                         .disabled(busy)
@@ -73,6 +93,7 @@ struct DiscoverView: View {
         }
         .padding()
         .navigationTitle("Каталог Modrinth")
+        .task { await loadPage(0) }
         .sheet(item: $selected) { hit in
             VStack(alignment: .leading, spacing: 16) {
                 Text(hit.name).font(.title2.bold())
@@ -103,6 +124,9 @@ struct DiscoverView: View {
 
     private func beginSearch() {
         guard !busy else { return }
+        results = []
+        nextOffset = nil
+        currentOffset = 0
         guard kind != "mod" || profileID != nil else {
             status = "Спочатку виберіть профіль у бібліотеці."
             return
@@ -110,8 +134,6 @@ struct DiscoverView: View {
         submittedQuery = query
         submittedKind = kind
         target = kind == "mod" ? profileID : nil
-        results = []
-        nextOffset = nil
         Task { await loadPage(0) }
     }
 
@@ -129,6 +151,7 @@ struct DiscoverView: View {
                 "query": submittedQuery, "offset": String(offset)
             ]), as: Page.self)
             results = page.hits
+            currentOffset = offset
             nextOffset = page.next_offset
             status = results.isEmpty ? "Нічого не знайдено." : ""
         }

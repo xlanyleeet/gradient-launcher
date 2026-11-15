@@ -75,6 +75,14 @@ enum Request {
         request: discover::Request,
     },
     LaunchSettings,
+    JavaRuntimes,
+    SetJavaRuntime {
+        major: String,
+        path: PathBuf,
+    },
+    DownloadJavaRuntime {
+        major: String,
+    },
     ProfileLaunchSettings {
         id: String,
     },
@@ -236,6 +244,14 @@ async fn require_stopped(id: &str) -> Result<()> {
     Ok(())
 }
 
+fn supported_java_major(value: &str) -> Result<u32> {
+    let major = value.parse()?;
+    if !matches!(major, 8 | 17 | 21 | 25) {
+        return Err("Виберіть Java 8, 17, 21 або 25.".into());
+    }
+    Ok(major)
+}
+
 async fn find_server(
     id: &str,
     server: &str,
@@ -344,6 +360,28 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 height: settings.game_resolution.1,
                 arguments: settings.extra_launch_args,
             })
+        }
+        Request::JavaRuntimes => {
+            let mut versions: Vec<_> = theseus::jre::get_java_versions().await?
+                .into_iter().map(|(_, version)| version).collect();
+            versions.sort_by_key(|version| version.parsed_version);
+            json!(versions)
+        }
+        Request::SetJavaRuntime { major, path } => {
+            let major = supported_java_major(&major)?;
+            let version = theseus::jre::check_jre(path).await?;
+            if version.parsed_version != major {
+                return Err(format!("Потрібна Java {major}, знайдено Java {}.", version.parsed_version).into());
+            }
+            theseus::jre::set_java_version(version).await?;
+            Value::Null
+        }
+        Request::DownloadJavaRuntime { major } => {
+            let major = supported_java_major(&major)?;
+            let path = theseus::jre::auto_install_java(major).await?;
+            let version = theseus::jre::check_jre(path).await?;
+            theseus::jre::set_java_version(version).await?;
+            Value::Null
         }
         Request::ProfileLaunchSettings { id } => {
             let profile = instance::get(&id).await?.ok_or("Профіль не знайдено.")?;

@@ -17,7 +17,7 @@ public sealed partial class MainWindow
     private async void Navigate(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
         if (Equals(args.InvokedItemContainer, DiscoverNavigation))
-            OpenDiscover();
+            await OpenDiscover();
         else if (Equals(args.InvokedItemContainer, SettingsNavigation))
             await OpenSettings();
         else if (Equals(args.InvokedItemContainer, LibraryNavigation))

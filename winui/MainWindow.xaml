@@ -192,6 +192,8 @@
                                  FontFamily="Consolas" TextWrapping="Wrap" MinHeight="96"/>
                         <Button x:Name="SaveSettingsButton" Content="Зберегти" Click="SaveSettings"/>
                         <TextBlock x:Name="SettingsStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                        <Button Content="Інсталяції Java" Click="ManageJava"/>
+                        <TextBlock x:Name="JavaStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
                 </ScrollViewer>
                 <Grid x:Name="DiscoverPage" Visibility="Collapsed" Padding="24"
@@ -207,27 +209,46 @@
                         <TextBlock Text="Каталог Modrinth" Style="{StaticResource TitleTextBlockStyle}"/>
                     </StackPanel>
                     <StackPanel Grid.Row="1" Spacing="8">
-                        <ComboBox x:Name="DiscoverKind" Header="Тип контенту" SelectedIndex="0">
+                        <ComboBox x:Name="DiscoverKind" Header="Тип контенту" SelectedIndex="0" SelectionChanged="DiscoverFilterChanged">
                             <ComboBoxItem Content="Модпаки" Tag="modpack"/>
                             <ComboBoxItem Content="Моди для вибраного профілю" Tag="mod"/>
                         </ComboBox>
-                        <AutoSuggestBox x:Name="DiscoverQuery" PlaceholderText="Знайти на Modrinth" QueryIcon="Find"
-                                        QuerySubmitted="DiscoverSearch"/>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <AutoSuggestBox x:Name="DiscoverQuery" PlaceholderText="Знайти на Modrinth" QueryIcon="Find"
+                                            QuerySubmitted="DiscoverSearch"/>
+                            <Button Grid.Column="1" Content="Пошук" Click="DiscoverSearchClick"/>
+                        </Grid>
                     </StackPanel>
                     <ListView x:Name="DiscoverResults" Grid.Row="2" IsItemClickEnabled="True"
                               SelectionMode="None" ItemClick="SelectDiscoverResult">
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Margin="0,6" Spacing="3">
+                            <Grid Margin="0,8" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="44"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="6" Width="44" Height="44" VerticalAlignment="Top">
+                                    <Image Source="{Binding IconSource}" Stretch="Uniform" AutomationProperties.AccessibilityView="Raw"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="3">
                                     <TextBlock Text="{Binding name}" FontWeight="SemiBold"/>
                                     <TextBlock Text="{Binding author}"/>
                                     <TextBlock Text="{Binding description}" TextWrapping="Wrap"/>
                                 </StackPanel>
+                            </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
                     <StackPanel Grid.Row="3" Spacing="8">
-                        <Button x:Name="DiscoverMore" Content="Наступна сторінка" IsEnabled="False" Click="DiscoverNext"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="DiscoverBack" Content="Попередня сторінка" IsEnabled="False" Click="DiscoverPrevious"/>
+                            <Button x:Name="DiscoverMore" Content="Наступна сторінка" IsEnabled="False" Click="DiscoverNext"/>
+                        </StackPanel>
                         <TextBlock x:Name="DiscoverStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
                 </Grid>

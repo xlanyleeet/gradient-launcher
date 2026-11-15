@@ -97,15 +97,29 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                     profile.applied_content_set.loader.as_str()
                 )]);
                 filters.push(vec![
-                    "client_side:required".to_owned(),
-                    "client_side:optional".to_owned(),
+                    "environment:client_and_server".to_owned(),
+                    "environment:client_only".to_owned(),
+                    "environment:client_only_server_optional".to_owned(),
+                    "environment:singleplayer_only".to_owned(),
+                    "environment:server_only_client_optional".to_owned(),
+                    "environment:client_or_server".to_owned(),
+                    "environment:client_or_server_prefers_both".to_owned(),
                 ]);
             }
             let facets = serde_json::to_string(&filters)?;
             let offset_param = offset.to_string();
+            let query = query.trim();
             let query = url::form_urlencoded::Serializer::new(String::new())
                 .extend_pairs([
-                    ("query", query.trim()),
+                    ("query", query),
+                    (
+                        "index",
+                        if query.is_empty() {
+                            "downloads"
+                        } else {
+                            "relevance"
+                        },
+                    ),
                     ("facets", facets.as_str()),
                     ("offset", offset_param.as_str()),
                     ("limit", "20"),
@@ -118,6 +132,7 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             };
             let hits: Vec<_> = results.result.hits.into_iter().map(|hit| json!({
                 "id": hit.project_id, "name": hit.title, "description": hit.description, "author": hit.author,
+                "icon": hit.icon_url,
             })).collect();
             let next_offset = offset.saturating_add(hits.len() as u32);
             json!({
