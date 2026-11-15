@@ -5,6 +5,7 @@ actor CoreClient {
     private var input: FileHandle?
     private var output: FileHandle?
     private var buffer = Data()
+    private(set) var isSuspendedForUpdate = false
 
     func call<T: Decodable>(_ method: String, _ values: [String: String] = [:], as _: T.Type) throws -> T {
         let request = values.merging(["method": method]) { _, method in method }
@@ -12,6 +13,7 @@ actor CoreClient {
     }
 
     func send<T: Decodable, Request: Encodable>(_ request: Request, as _: T.Type) throws -> T {
+        guard !isSuspendedForUpdate else { throw CoreError("Дочекайтеся завершення оновлення Gradient.") }
         if process?.isRunning != true {
             try connect()
         }
@@ -20,6 +22,23 @@ actor CoreClient {
         guard let input else { throw CoreError("Канал ядра закрито.") }
         try input.write(contentsOf: line)
         return try JSONDecoder().decode(Reply<T>.self, from: readLine()).value()
+    }
+
+    func suspendForUpdate() throws {
+        _ = try call("prepare_launcher_update", as: EmptyReply.self)
+        guard let child = process else { return }
+        try input?.close()
+        child.waitUntilExit()
+        try? output?.close()
+        process = nil
+        input = nil
+        output = nil
+        buffer.removeAll()
+        isSuspendedForUpdate = true
+    }
+
+    func resumeAfterUpdate() {
+        isSuspendedForUpdate = false
     }
 
     private func connect() throws {

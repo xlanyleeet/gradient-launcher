@@ -247,7 +247,7 @@ private struct LauncherView: View {
         .searchable(text: $search, prompt: "Пошук профілів")
         .task {
             while !Task.isCancelled {
-                await perform(refresh)
+                if !(await core.isSuspendedForUpdate) { await perform(refresh) }
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }

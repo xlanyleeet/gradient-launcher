@@ -83,6 +83,24 @@ jobs:
           name: gradient-native-release-windows-x64
           path: gradient-native-windows-x64.zip
           if-no-files-found: error
+      - name: Package the Velopack installer and update feed
+        shell: pwsh
+        run: |
+          dotnet tool install vpk --tool-path "$env:RUNNER_TEMP/vpk" --version 1.2.161
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP/vpk/vpk.exe" pack --packId GradientNative --packVersion $env:GRADIENT_NATIVE_VERSION --packDir 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64' --mainExe Gradient.WinUI.exe --packTitle 'Gradient Launcher' --channel win-x64 --runtime win-x64 --framework net8-x64-desktop --outputDir velopack
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          foreach ($pattern in 'releases.win-x64.json', '*-full.nupkg', '*-Setup.exe') {
+            if (!(Get-ChildItem -Path velopack -Filter $pattern -File)) { throw "Missing Velopack output: $pattern" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradient-native-velopack
+          path: |
+            velopack/releases.win-x64.json
+            velopack/*-full.nupkg
+            velopack/*-Setup.exe
+          if-no-files-found: error
 
   macos:
     name: macOS ${{ matrix.platform }}
@@ -116,6 +134,13 @@ jobs:
         shell: bash
         env:
           MACOS_ARCH: ${{ matrix.arch }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_KEY_BASE64: ${{ secrets.MACOS_NOTARY_KEY_BASE64 }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
         run: |
           output="$(swift build --package-path swiftui -c release --show-bin-path)"
           for binary in "$output/Gradient" core/target/release/gradient-core; do
@@ -128,18 +153,28 @@ jobs:
           done
           stage="$RUNNER_TEMP/gradient-native-macos"
           app="$stage/Gradient Launcher.app"
-          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
           cp swiftui/Info.plist "$app/Contents/Info.plist"
           plutil -replace CFBundleShortVersionString -string "$GRADIENT_NATIVE_VERSION" "$app/Contents/Info.plist"
           plutil -replace CFBundleVersion -string "$GRADIENT_NATIVE_VERSION" "$app/Contents/Info.plist"
           plutil -lint "$app/Contents/Info.plist"
           cp "$output/Gradient" core/target/release/gradient-core "$app/Contents/MacOS/"
           cp swiftui/Sources/Gradient/Resources/Cover.png "$app/Contents/Resources/"
-          tar -czf "gradient-native-macos-$MACOS_ARCH.tar.gz" -C "$stage" "Gradient Launcher.app"
+          framework="$(find swiftui/.build/artifacts -type d -path '*/macos-*/Sparkle.framework' -print -quit)"
+          test -d "$framework"
+          ditto "$framework" "$app/Contents/Frameworks/Sparkle.framework"
+          otool -L "$app/Contents/MacOS/Gradient" | grep -F '@rpath/Sparkle.framework/'
+          if [[ "$GITHUB_REF_TYPE" == tag && -n "$SPARKLE_PUBLIC_KEY" ]]; then
+            bash .github/scripts/package-sparkle.sh "$app" "$MACOS_ARCH"
+          else
+            tar -czf "gradient-native-macos-$MACOS_ARCH.tar.gz" -C "$stage" "Gradient Launcher.app"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: gradient-native-macos-${{ matrix.arch }}
-          path: gradient-native-macos-${{ matrix.arch }}.tar.gz
+          path: |
+            gradient-native-macos-${{ matrix.arch }}.tar.gz
+            appcast-macos-${{ matrix.arch }}.xml
           if-no-files-found: error
 
   release:
@@ -160,6 +195,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
         run: |
           tag="$GITHUB_REF_NAME"
           assets=(
@@ -167,6 +203,13 @@ jobs:
             downloads/gradient-native-macos-arm64/gradient-native-macos-arm64.tar.gz
             downloads/gradient-native-macos-x86_64/gradient-native-macos-x86_64.tar.gz
           )
+          for path in "${assets[@]}"; do test -s "$path"; done
+          velopack=downloads/gradient-native-velopack
+          assets+=("$velopack/releases.win-x64.json" "$velopack/"*-full.nupkg "$velopack/"*-Setup.exe)
+          if [[ -n "$SPARKLE_PUBLIC_KEY" ]]; then
+            assets+=(downloads/gradient-native-macos-arm64/appcast-macos-arm64.xml)
+            assets+=(downloads/gradient-native-macos-x86_64/appcast-macos-x86_64.xml)
+          fi
           for path in "${assets[@]}"; do test -s "$path"; done
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' > release-status; then
             if [[ "$(cat release-status)" == false ]]; then

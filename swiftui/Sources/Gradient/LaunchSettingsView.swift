@@ -102,7 +102,11 @@ struct LaunchSettingsView: View {
         updateError = nil
         defer { checkingUpdate = false }
         do {
-            updateInfo = try await core.call("check_update", as: UpdateInfo.self)
+            if SparkleUpdates.shared.isConfigured {
+                try await SparkleUpdates.shared.check(using: core)
+            } else {
+                updateInfo = try await core.call("check_update", as: UpdateInfo.self)
+            }
         } catch {
             updateError = error.localizedDescription
         }

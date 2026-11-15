@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
+using Velopack;
+using Velopack.Sources;
 
 namespace Gradient;
 
@@ -25,6 +27,12 @@ public sealed partial class MainWindow
             {
                 try
                 {
+                    var manager = new UpdateManager(new GithubSource("https://github.com/xlanyleeet/gradient-launcher", null, false));
+                    if (manager.IsInstalled)
+                    {
+                        await CheckInstalledUpdate(manager);
+                        return;
+                    }
                     var info = await core.Call<UpdateInfo>(new { method = "check_update" });
                     if (info.available is { } release)
                     {
@@ -42,6 +50,25 @@ public sealed partial class MainWindow
             }, waitForCore: true);
         }
         finally { CheckUpdateButton.IsEnabled = true; }
+    }
+
+    private async Task CheckInstalledUpdate(UpdateManager manager)
+    {
+        var update = await manager.CheckForUpdatesAsync();
+        if (update is null)
+        {
+            UpdateStatus.Text = $"Встановлено {manager.CurrentVersion}. Новішого релізу немає.";
+            return;
+        }
+        var version = update.TargetFullRelease.Version;
+        UpdateStatus.Text = $"Доступна версія {version}.";
+        var dialog = Editor("Оновлення Gradient", $"Завантажити версію {version} й перезапустити лаунчер?", "Оновити й перезапустити");
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        await core.Call<JsonElement>(new { method = "prepare_launcher_update" });
+        UpdateStatus.Text = $"Завантажуємо {version}…";
+        await manager.DownloadUpdatesAsync(update);
+        await core.StopForUpdateAsync();
+        manager.ApplyUpdatesAndRestart(update.TargetFullRelease);
     }
 
     private void RegisterProjectLinks(object sender, RoutedEventArgs e)

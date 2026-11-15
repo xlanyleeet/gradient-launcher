@@ -19,6 +19,7 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 enum Request {
     Library,
     CheckUpdate,
+    PrepareLauncherUpdate,
     CreateProfileShortcut {
         id: String,
     },
@@ -328,6 +329,14 @@ async fn local_world(id: &str, world: &str) -> Result<worlds::World> {
 async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     Ok(match request {
         Request::CheckUpdate => updates::check().await?,
+        Request::PrepareLauncherUpdate => {
+            if !process::get_all().await?.is_empty() || install::list_jobs(false).await?.iter().any(|job| {
+                matches!(job.status, install::InstallJobStatus::Queued | install::InstallJobStatus::Running)
+            }) {
+                return Err("Закрийте Minecraft і дочекайтеся завершення встановлень перед оновленням Gradient.".into());
+            }
+            Value::Null
+        }
         Request::CreateProfileShortcut { id } => {
             let profile = instance::get(&id).await?.ok_or("Профіль не знайдено.")?;
             let mut url = url::Url::parse("gradient-native://launch/instance")?;

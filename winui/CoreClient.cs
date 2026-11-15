@@ -55,6 +55,19 @@ internal sealed class CoreClient : IDisposable
         return document.RootElement.Clone();
     }
 
+    public async Task StopForUpdateAsync()
+    {
+        await Call<JsonElement>(new { method = "prepare_launcher_update" });
+        var child = process!;
+        try
+        {
+            child.StandardInput.Close();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await child.WaitForExitAsync(timeout.Token);
+        }
+        finally { Dispose(); }
+    }
+
     public void Dispose()
     {
         process?.StandardInput.Dispose();

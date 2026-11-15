@@ -9,9 +9,11 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
     <Content Include="Assets/Cover.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../core/target/release/gradient-core.exe" Link="gradient-core.exe"
              CopyToOutputDirectory="PreserveNewest" Condition="Exists('../core/target/release/gradient-core.exe')" />
