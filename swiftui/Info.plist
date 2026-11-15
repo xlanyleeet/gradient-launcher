@@ -16,6 +16,15 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.gradient.launcher.native.catalog</string>
+            <key>CFBundleURLSchemes</key>
+            <array><string>gradient-native</string></array>
+        </dict>
+    </array>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

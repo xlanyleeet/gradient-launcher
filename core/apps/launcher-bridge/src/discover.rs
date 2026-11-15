@@ -41,6 +41,9 @@ pub(super) enum Request {
         project: String,
         kind: Kind,
     },
+    ResolveLink {
+        url: String,
+    },
     Install {
         project: String,
         version: String,
@@ -315,6 +318,9 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                 "gallery": gallery.map(|image| &image.url),
             })
         }
+        Request::ResolveLink { url } => {
+            Box::pin(resolve_project_link(&url)).await?
+        }
         Request::Install {
             project,
             version,
@@ -363,4 +369,74 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             Value::Null
         }
     })
+}
+
+async fn resolve_project_link(value: &str) -> super::Result<Value> {
+    let url = url::Url::parse(value.trim())?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+    {
+        return Err("Непідтримуване посилання.".into());
+    }
+    let host = url.host_str().ok_or("Посилання не має адреси.")?;
+    let mut parts: Vec<_> = url
+        .path_segments()
+        .ok_or("Непідтримуване посилання.")?
+        .filter(|part| !part.is_empty())
+        .collect();
+    match (url.scheme(), host) {
+        ("gradient-native" | "gradient" | "modrinth", _) => {
+            parts.insert(0, host)
+        }
+        ("https", "modrinth.com" | "www.modrinth.com") => {}
+        _ => {
+            return Err(
+                "Вставте посилання на мод, модпак або версію Modrinth.".into()
+            );
+        }
+    }
+    let valid_id = |id: &str| {
+        !id.is_empty()
+            && id.len() <= 128
+            && id.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || b"-_".contains(&byte)
+            })
+    };
+    let (project_key, requested_kind, preferred_version) = match parts
+        .as_slice()
+    {
+        [kind @ ("mod" | "modpack"), id] if valid_id(id) => {
+            (id.to_string(), Some(*kind), None)
+        }
+        [kind @ ("mod" | "modpack"), id, "version", version]
+            if valid_id(id) && valid_id(version) =>
+        {
+            (id.to_string(), Some(*kind), Some(version.to_string()))
+        }
+        ["version", id] if valid_id(id) => {
+            let version = Box::pin(cache::get_version(id, None))
+                .await?
+                .ok_or("Версію не знайдено.")?;
+            (version.project_id, None, Some(version.id))
+        }
+        _ => {
+            return Err(
+                "Вставте посилання на мод, модпак або версію Modrinth.".into()
+            );
+        }
+    };
+    let project = Box::pin(cache::get_project(&project_key, None))
+        .await?
+        .ok_or("Проєкт Modrinth не знайдено.")?;
+    let kind = project.project_type.as_str();
+    if !matches!(kind, "mod" | "modpack")
+        || requested_kind.is_some_and(|requested| requested != kind)
+    {
+        return Err("Посилання має вказувати на мод або модпак.".into());
+    }
+    Ok(json!({
+        "id": project.id, "name": project.title, "description": project.description,
+        "kind": kind, "preferred_version": preferred_version,
+    }))
 }

@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
     private readonly SemaphoreSlim coreOperation = new(1);
     private bool closed;
     private bool ready;
+    private readonly TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool filteringProfiles;
 
     public MainWindow()
@@ -52,17 +53,30 @@ public sealed partial class MainWindow : Window
         Layout.Loaded -= Start;
         await Run(RefreshAccountAvatar);
         await Run(Update);
-        var importPath = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(arg =>
-            Path.GetExtension(arg).Equals(".mrpack", StringComparison.OrdinalIgnoreCase) && File.Exists(arg));
-        if (importPath is not null)
-            await Run(async () =>
-            {
-                var dialog = Editor("Імпортувати модпак?", Path.GetFileName(importPath), "Імпортувати");
-                if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-                    await ApplyProfileChange(new { method = "import", path = Path.GetFullPath(importPath) },
-                        "Модпак додано до черги.");
-            });
+        started.TrySetResult();
         if (!closed) timer.Start();
+    }
+
+    internal static bool IsModpackPath(string path) =>
+        Path.GetExtension(path).Equals(".mrpack", StringComparison.OrdinalIgnoreCase) && File.Exists(path);
+
+    internal async Task ReceiveModpack(string path)
+    {
+        if (!IsModpackPath(path)) return;
+        await started.Task;
+        await Run(async () =>
+        {
+            var dialog = Editor("Імпортувати модпак?", Path.GetFileName(path), "Імпортувати");
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                await ApplyProfileChange(new { method = "import", path = Path.GetFullPath(path) },
+                    "Модпак додано до черги.");
+        }, waitForCore: true);
+    }
+
+    internal async Task ReceiveProjectLink(string url)
+    {
+        await started.Task;
+        await OpenProjectLink(url);
     }
 
     private async Task Run(Func<Task> action, bool waitForCore = false)

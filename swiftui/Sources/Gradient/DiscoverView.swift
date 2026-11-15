@@ -3,6 +3,7 @@ import SwiftUI
 struct DiscoverView: View {
     let core: CoreClient
     let profileID: String?
+    @Binding var incomingLink: String?
     let installed: () -> Void
 
     private struct Hit: Decodable, Identifiable {
@@ -11,6 +12,21 @@ struct DiscoverView: View {
         let description: String
         let author: String
         let icon: URL?
+    }
+
+    private struct LinkedProject: Decodable {
+        let id: String
+        let name: String
+        let kind: String
+        let preferred_version: String?
+    }
+
+    private struct ProjectSelection: Identifiable {
+        let id: String
+        let name: String
+        let kind: String
+        let profile: String?
+        let preferredVersion: String?
     }
 
     private struct Version: Decodable, Identifiable {
@@ -46,7 +62,9 @@ struct DiscoverView: View {
     @State private var results: [Hit] = []
     @State private var nextOffset: UInt32?
     @State private var currentOffset: UInt32 = 0
-    @State private var selected: Hit?
+    @State private var selected: ProjectSelection?
+    @State private var linkPrompt = false
+    @State private var linkText = ""
     @State private var projectDetails: ProjectDetails?
     @State private var versions: [Version] = []
     @State private var version = ""
@@ -65,6 +83,8 @@ struct DiscoverView: View {
                 TextField("Знайти на Modrinth", text: $query)
                     .onSubmit { beginSearch() }
                 Button("Пошук", systemImage: "magnifyingglass", action: beginSearch)
+                    .disabled(busy)
+                Button("Відкрити посилання", systemImage: "link") { linkPrompt = true }
                     .disabled(busy)
             }
             DisclosureGroup("Фільтри та сортування") {
@@ -130,7 +150,27 @@ struct DiscoverView: View {
         }
         .padding()
         .navigationTitle("Каталог Modrinth")
-        .task { await loadPage(0) }
+        .task(id: incomingLink) {
+            if let incomingLink {
+                while busy && !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(75))
+                }
+                guard !Task.isCancelled else { return }
+                await openLink(incomingLink)
+                if self.incomingLink == incomingLink { self.incomingLink = nil }
+            } else if selected == nil && results.isEmpty && status.isEmpty {
+                await loadPage(0)
+            }
+        }
+        .alert("Відкрити посилання Modrinth", isPresented: $linkPrompt) {
+            TextField("https://modrinth.com/modpack/…", text: $linkText)
+            Button("Відкрити") {
+                let url = linkText
+                linkText = ""
+                Task { await openLink(url) }
+            }
+            Button("Скасувати", role: .cancel) {}
+        }
         .sheet(item: $selected) { hit in
             VStack(alignment: .leading, spacing: 16) {
                 Text(hit.name).font(.title2.bold())
@@ -158,9 +198,11 @@ struct DiscoverView: View {
                     }
                 }
                 if versions.isEmpty {
-                    Text("Сумісних версій немає.")
+                    Text(hit.kind == "mod" && hit.profile == nil ?
+                         "Виберіть профіль у бібліотеці, щоб установити мод." : "Сумісних версій немає.")
                 } else {
                     Picker("Версія", selection: $version) {
+                        if version.isEmpty { Text("Виберіть іншу версію").tag("") }
                         ForEach(versions) { entry in Text("\(entry.name) · \(entry.channel)").tag(entry.id) }
                     }
                 }
@@ -226,22 +268,47 @@ struct DiscoverView: View {
     private func showVersions(_ hit: Hit) {
         Task {
             await run("Завантажуємо проєкт…") {
-                projectDetails = try await core.call("discover", request("project", ["project": hit.id]), as: ProjectDetails.self)
-                versions = try await core.call("discover", request("versions", ["project": hit.id]), as: [Version].self)
-                version = versions.first?.id ?? ""
-                selected = hit
-                status = ""
+                try await loadProject(.init(id: hit.id, name: hit.name, kind: submittedKind,
+                                            profile: target, preferredVersion: nil))
             }
         }
     }
 
-    @MainActor private func install(_ hit: Hit, version: String) async {
+    @MainActor private func openLink(_ url: String) async {
+        await run("Відкриваємо посилання…") {
+            let linked = try await core.call("discover", ["action": "resolve_link", "url": url], as: LinkedProject.self)
+            try await loadProject(.init(id: linked.id, name: linked.name, kind: linked.kind,
+                                        profile: linked.kind == "mod" ? profileID : nil,
+                                        preferredVersion: linked.preferred_version))
+        }
+    }
+
+    @MainActor private func loadProject(_ project: ProjectSelection) async throws {
+        var values = ["project": project.id, "kind": project.kind, "action": "project"]
+        projectDetails = try await core.call("discover", values, as: ProjectDetails.self)
+        values["action"] = "versions"
+        values["profile"] = project.profile
+        if project.kind == "mod" && project.profile == nil {
+            versions = []
+        } else {
+            versions = try await core.call("discover", values, as: [Version].self)
+        }
+        if let preferred = project.preferredVersion {
+            version = versions.first(where: { $0.id == preferred })?.id ?? ""
+        } else {
+            version = versions.first?.id ?? ""
+        }
+        selected = project
+        status = ""
+    }
+
+    @MainActor private func install(_ hit: ProjectSelection, version: String) async {
         await run("Встановлюємо…") {
-            _ = try await core.call("discover", request("install", [
-                "project": hit.id, "version": version
-            ]), as: EmptyReply.self)
+            var values = ["action": "install", "project": hit.id, "version": version, "kind": hit.kind]
+            values["profile"] = hit.profile
+            _ = try await core.call("discover", values, as: EmptyReply.self)
             installed()
-            status = submittedKind == "modpack" ? "Модпак додано до черги." : "Мод встановлено."
+            status = hit.kind == "modpack" ? "Модпак додано до черги." : "Мод встановлено."
         }
     }
 

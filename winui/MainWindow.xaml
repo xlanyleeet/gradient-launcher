@@ -195,6 +195,7 @@
                         <TextBlock x:Name="SettingsStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                         <Button Content="Інсталяції Java" Click="ManageJava"/>
                         <TextBlock x:Name="JavaStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                        <Button Content="Увімкнути посилання Gradient" Click="RegisterProjectLinks"/>
                     </StackPanel>
                 </ScrollViewer>
                 <Grid x:Name="DiscoverPage" Visibility="Collapsed" Padding="24"
@@ -221,7 +222,10 @@
                             </Grid.ColumnDefinitions>
                             <AutoSuggestBox x:Name="DiscoverQuery" PlaceholderText="Знайти на Modrinth" QueryIcon="Find"
                                             QuerySubmitted="DiscoverSearch"/>
-                            <Button Grid.Column="1" Content="Пошук" Click="DiscoverSearchClick"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button Content="Пошук" Click="DiscoverSearchClick"/>
+                                <Button Content="Відкрити посилання" Click="OpenLinkClick"/>
+                            </StackPanel>
                         </Grid>
                         <Expander Header="Фільтри та сортування" HorizontalAlignment="Stretch">
                             <StackPanel Spacing="8">

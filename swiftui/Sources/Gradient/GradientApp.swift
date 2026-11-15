@@ -110,6 +110,7 @@ private struct LauncherView: View {
     @State private var selectedID: String?
     @State private var showDiscover = false
     @State private var pendingPack: URL?
+    @State private var catalogLink: String?
     @State private var transfer: ProfileTransferView.Operation?
     @State private var fileRefresh = 0
     @State private var coverKey: String?
@@ -188,7 +189,7 @@ private struct LauncherView: View {
             }
         } detail: {
             if showDiscover {
-                DiscoverView(core: core, profileID: selectedID) {
+                DiscoverView(core: core, profileID: selectedID, incomingLink: $catalogLink) {
                     loadedTab = nil
                 }
                 .toolbar {
@@ -252,7 +253,12 @@ private struct LauncherView: View {
             }
         }
         .onOpenURL { url in
-            if url.isFileURL && url.pathExtension.lowercased() == "mrpack" { pendingPack = url }
+            if url.isFileURL && url.pathExtension.lowercased() == "mrpack" {
+                pendingPack = url
+            } else if let scheme = url.scheme, ["gradient-native", "gradient", "modrinth"].contains(scheme) {
+                catalogLink = url.absoluteString
+                showDiscover = true
+            }
         }
         .confirmationDialog("Імпортувати модпак?", isPresented: Binding(
             get: { pendingPack != nil },
@@ -270,7 +276,7 @@ private struct LauncherView: View {
             Button("Скасувати", role: .cancel) {}
         } message: { Text($0.lastPathComponent) }
         .onChange(of: selectedID) {
-            showDiscover = false
+            if catalogLink == nil { showDiscover = false }
             Task { await perform(loadSelection) }
         }
         .onChange(of: tab) {

@@ -20,12 +20,13 @@ public sealed partial class MainWindow
     private sealed record SearchPage(DiscoverHit[] hits, uint? next_offset);
     private sealed record ProjectDetails(string description, string body, string license,
         uint downloads, string updated, string url, string? gallery);
+    private sealed record LinkedProject(string id, string name, string kind, string? preferred_version);
     private sealed record SearchSpec(string Query, string Kind, string? Profile, string? Sort, string? GameVersion, string? Loader);
     private SearchSpec? discoverSearch;
     private uint? discoverOffset;
     private uint currentOffset;
 
-    private async Task OpenDiscover()
+    private void ShowDiscoverPage()
     {
         SettingsPage.Visibility = Visibility.Collapsed;
         LibraryPage.Visibility = Visibility.Collapsed;
@@ -33,6 +34,11 @@ public sealed partial class MainWindow
         Navigation.SelectedItem = DiscoverNavigation;
         Navigation.IsPaneOpen = false;
         DiscoverQuery.Focus(FocusState.Programmatic);
+    }
+
+    private async Task OpenDiscover()
+    {
+        ShowDiscoverPage();
         var search = CurrentDiscoverSearch();
         if (discoverSearch != search)
             await SubmitDiscoverSearch();
@@ -135,19 +141,44 @@ public sealed partial class MainWindow
     private async void SelectDiscoverResult(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not DiscoverHit hit || discoverSearch is not { } search) return;
+        await DiscoverAction(() => ShowProject(hit.id, hit.name, search.Kind, search.Profile, null));
+    }
+
+    private async void OpenLinkClick(object sender, RoutedEventArgs e)
+    {
+        var input = new TextBox { PlaceholderText = "https://modrinth.com/modpack/…" };
         await DiscoverAction(async () =>
         {
+            if (await Editor("Відкрити посилання Modrinth", input, "Відкрити").ShowAsync() == ContentDialogResult.Primary)
+                await ResolveAndShowLink(input.Text);
+        });
+    }
+
+    internal Task OpenProjectLink(string url) => DiscoverAction(() => ResolveAndShowLink(url));
+
+    private async Task ResolveAndShowLink(string url)
+    {
+        ShowDiscoverPage();
+        DiscoverStatus.Text = "Відкриваємо посилання…";
+        var linked = await core.Call<LinkedProject>(new { method = "discover", action = "resolve_link", url });
+        await ShowProject(linked.id, linked.name, linked.kind,
+            linked.kind == "mod" ? SelectedProfile?.id : null, linked.preferred_version);
+    }
+
+    private async Task ShowProject(string id, string name, string kind, string? profile, string? preferredVersion)
+    {
             DiscoverStatus.Text = "Завантажуємо проєкт…";
             var details = await core.Call<ProjectDetails>(new
             {
-                method = "discover", action = "project", project = hit.id, kind = search.Kind
+                method = "discover", action = "project", project = id, kind
             });
-            var versions = await core.Call<DiscoverVersion[]>(new
+            var needsProfile = kind == "mod" && profile is null;
+            var versions = needsProfile ? Array.Empty<DiscoverVersion>() : await core.Call<DiscoverVersion[]>(new
             {
-                method = "discover", action = "versions", project = hit.id, kind = search.Kind, profile = search.Profile
+                method = "discover", action = "versions", project = id, kind, profile
             });
-            var picker = new ComboBox { Header = "Версія", ItemsSource = versions, DisplayMemberPath = "Label",
-                SelectedIndex = versions.Length == 0 ? -1 : 0 };
+            var picker = new ComboBox { Header = "Версія", ItemsSource = versions, DisplayMemberPath = "Label" };
+            picker.SelectedItem = preferredVersion is null ? versions.FirstOrDefault() : versions.FirstOrDefault(version => version.id == preferredVersion);
             var content = new StackPanel { Spacing = 10 };
             content.Children.Add(new TextBlock { Text = details.description, TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock
@@ -166,21 +197,22 @@ public sealed partial class MainWindow
                     Content = new TextBlock { Text = details.body, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap }
                 });
             content.Children.Add(versions.Length == 0
-                ? new TextBlock { Text = "Сумісних версій немає." }
+                ? new TextBlock { Text = needsProfile ? "Виберіть профіль у бібліотеці, щоб установити мод." : "Сумісних версій немає." }
                 : picker);
-            var dialog = Editor(hit.name, content, "Встановити");
-            dialog.IsPrimaryButtonEnabled = versions.Length > 0;
+            if (preferredVersion is not null && versions.Length > 0 && picker.SelectedItem is null)
+                content.Children.Add(new TextBlock { Text = "Версія за посиланням недоступна. Можна вибрати іншу." });
+            var dialog = Editor(name, new ScrollViewer { Content = content, MaxHeight = 430 }, "Встановити");
+            dialog.IsPrimaryButtonEnabled = picker.SelectedItem is not null;
+            picker.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = picker.SelectedItem is not null;
             DiscoverStatus.Text = "";
             if (await dialog.ShowAsync() != ContentDialogResult.Primary ||
                 picker.SelectedItem is not DiscoverVersion version) return;
             DiscoverStatus.Text = "Встановлюємо…";
             await core.Call<JsonElement>(new
             {
-                method = "discover", action = "install", project = hit.id, version = version.id,
-                kind = search.Kind, profile = search.Profile
+                method = "discover", action = "install", project = id, version = version.id, kind, profile
             });
             loadedTab = null;
-            DiscoverStatus.Text = search.Kind == "modpack" ? "Модпак додано до черги." : "Мод встановлено.";
-        });
+            DiscoverStatus.Text = kind == "modpack" ? "Модпак додано до черги." : "Мод встановлено.";
     }
 }

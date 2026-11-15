@@ -12,6 +12,19 @@ public sealed partial class MainWindow
     private sealed record ProfileLaunchSettings(string? memory, string? java);
     private sealed record JavaRuntime(uint parsed_version, string version, string path);
 
+    private void RegisterProjectLinks(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Microsoft.Windows.AppLifecycle.ActivationRegistrationManager.RegisterForProtocolActivation(
+                "gradient-native", "", "Gradient Launcher", "");
+            Microsoft.Windows.AppLifecycle.ActivationRegistrationManager.RegisterForFileTypeActivation(
+                new[] { ".mrpack" }, "", "Gradient Launcher", Array.Empty<string>(), "");
+            SettingsStatus.Text = "Gradient зареєстровано для посилань gradient-native:// та файлів .mrpack.";
+        }
+        catch (Exception error) { SettingsStatus.Text = error.Message; }
+    }
+
     private async void ManageJava(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         try
