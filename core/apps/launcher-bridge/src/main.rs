@@ -407,7 +407,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             instance::write_instance_file(&id, &path, text.as_bytes(), false).await?;
             Value::Null
         }
-        Request::Discover { request } => discover::handle(request).await?,
+        Request::Discover { request } => Box::pin(discover::handle(request)).await?,
         Request::LaunchSettings => {
             let settings = theseus::settings::get().await?;
             json!(LaunchSettings {

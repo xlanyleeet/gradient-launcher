@@ -18,6 +18,8 @@ public sealed partial class MainWindow
     }
 
     private sealed record SearchPage(DiscoverHit[] hits, uint? next_offset);
+    private sealed record ProjectDetails(string description, string body, string license,
+        uint downloads, string updated, string url, string? gallery);
     private sealed record SearchSpec(string Query, string Kind, string? Profile, string? Sort, string? GameVersion, string? Loader);
     private SearchSpec? discoverSearch;
     private uint? discoverOffset;
@@ -135,7 +137,11 @@ public sealed partial class MainWindow
         if (e.ClickedItem is not DiscoverHit hit || discoverSearch is not { } search) return;
         await DiscoverAction(async () =>
         {
-            DiscoverStatus.Text = "Завантажуємо версії…";
+            DiscoverStatus.Text = "Завантажуємо проєкт…";
+            var details = await core.Call<ProjectDetails>(new
+            {
+                method = "discover", action = "project", project = hit.id, kind = search.Kind
+            });
             var versions = await core.Call<DiscoverVersion[]>(new
             {
                 method = "discover", action = "versions", project = hit.id, kind = search.Kind, profile = search.Profile
@@ -143,7 +149,22 @@ public sealed partial class MainWindow
             var picker = new ComboBox { Header = "Версія", ItemsSource = versions, DisplayMemberPath = "Label",
                 SelectedIndex = versions.Length == 0 ? -1 : 0 };
             var content = new StackPanel { Spacing = 10 };
-            content.Children.Add(new TextBlock { Text = hit.description, TextWrapping = TextWrapping.Wrap });
+            content.Children.Add(new TextBlock { Text = details.description, TextWrapping = TextWrapping.Wrap });
+            content.Children.Add(new TextBlock
+            {
+                Text = $"{details.downloads:N0} завантажень · {details.license} · Оновлено {details.updated}",
+                TextWrapping = TextWrapping.Wrap
+            });
+            if (Uri.TryCreate(details.url, UriKind.Absolute, out var projectUri) && projectUri.Scheme == Uri.UriSchemeHttps)
+                content.Children.Add(new HyperlinkButton { Content = "Відкрити на Modrinth", NavigateUri = projectUri });
+            if (Uri.TryCreate(details.gallery, UriKind.Absolute, out var imageUri) && imageUri.Scheme == Uri.UriSchemeHttps)
+                content.Children.Add(new Image { Source = new BitmapImage(imageUri) { DecodePixelWidth = 700 }, MaxHeight = 180 });
+            if (!string.IsNullOrWhiteSpace(details.body))
+                content.Children.Add(new ScrollViewer
+                {
+                    MaxHeight = 180,
+                    Content = new TextBlock { Text = details.body, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap }
+                });
             content.Children.Add(versions.Length == 0
                 ? new TextBlock { Text = "Сумісних версій немає." }
                 : picker);

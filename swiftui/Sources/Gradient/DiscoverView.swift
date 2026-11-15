@@ -24,6 +24,16 @@ struct DiscoverView: View {
         let next_offset: UInt32?
     }
 
+    private struct ProjectDetails: Decodable {
+        let description: String
+        let body: String
+        let license: String
+        let downloads: UInt32
+        let updated: String
+        let url: URL
+        let gallery: URL?
+    }
+
     @State private var query = ""
     @State private var kind = "modpack"
     @State private var sort = ""
@@ -37,6 +47,7 @@ struct DiscoverView: View {
     @State private var nextOffset: UInt32?
     @State private var currentOffset: UInt32 = 0
     @State private var selected: Hit?
+    @State private var projectDetails: ProjectDetails?
     @State private var versions: [Version] = []
     @State private var version = ""
     @State private var status = ""
@@ -123,7 +134,29 @@ struct DiscoverView: View {
         .sheet(item: $selected) { hit in
             VStack(alignment: .leading, spacing: 16) {
                 Text(hit.name).font(.title2.bold())
-                Text(hit.description)
+                if let details = projectDetails {
+                    Text(details.description)
+                    Text("\(details.downloads.formatted()) завантажень · \(details.license) · Оновлено \(details.updated)")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Link("Відкрити на Modrinth", destination: details.url)
+                    if let gallery = details.gallery, gallery.scheme == "https" {
+                        AsyncImage(url: gallery) { image in
+                            image.resizable().scaledToFit()
+                        } placeholder: {
+                            ProgressView().controlSize(.small)
+                        }
+                        .frame(maxHeight: 180)
+                        .accessibilityLabel("Зображення проєкту")
+                    }
+                    if !details.body.isEmpty {
+                        ScrollView {
+                            Text(details.body)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 180)
+                    }
+                }
                 if versions.isEmpty {
                     Text("Сумісних версій немає.")
                 } else {
@@ -192,7 +225,8 @@ struct DiscoverView: View {
 
     private func showVersions(_ hit: Hit) {
         Task {
-            await run("Завантажуємо версії…") {
+            await run("Завантажуємо проєкт…") {
+                projectDetails = try await core.call("discover", request("project", ["project": hit.id]), as: ProjectDetails.self)
                 versions = try await core.call("discover", request("versions", ["project": hit.id]), as: [Version].self)
                 version = versions.first?.id ?? ""
                 selected = hit

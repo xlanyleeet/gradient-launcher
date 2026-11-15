@@ -37,6 +37,10 @@ pub(super) enum Request {
         kind: Kind,
         profile: Option<String>,
     },
+    Project {
+        project: String,
+        kind: Kind,
+    },
     Install {
         project: String,
         version: String,
@@ -99,7 +103,7 @@ pub(super) async fn installed_mod_versions(
     id: &str,
     path: &str,
 ) -> super::Result<Value> {
-    let (profile, item) = installed_mod(id, path).await?;
+    let (profile, item) = Box::pin(installed_mod(id, path)).await?;
     let project = item.project.ok_or("Мод не пов’язаний із Modrinth.")?;
     let current_id = item.version.map(|version| version.id);
     let mut versions = Box::pin(cache::get_project_versions(
@@ -129,7 +133,7 @@ pub(super) async fn switch_installed_mod(
     version: &str,
 ) -> super::Result<()> {
     super::require_stopped(id).await?;
-    let (profile, item) = installed_mod(id, path).await?;
+    let (profile, item) = Box::pin(installed_mod(id, path)).await?;
     let project = item.project.ok_or("Мод не пов’язаний із Modrinth.")?;
     let selected = cache::get_version(version, None)
         .await?
@@ -278,6 +282,38 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             json!(versions.into_iter().filter(|version| compatible(version, target.as_ref()))
                 .map(|version| json!({ "id": version.id, "name": version.version_number, "channel": version.version_type }))
                 .collect::<Vec<_>>())
+        }
+        Request::Project { project, kind } => {
+            let project = Box::pin(cache::get_project(&project, None))
+                .await?
+                .ok_or("Проєкт Modrinth не знайдено.")?;
+            if project.project_type != kind.key() {
+                return Err(
+                    "Проєкт не належить до вибраного типу контенту.".into()
+                );
+            }
+            let mut url = url::Url::parse("https://modrinth.com/")?;
+            url.path_segments_mut()
+                .map_err(|_| "Не вдалося побудувати адресу проєкту.")?
+                .extend([
+                    kind.key(),
+                    project.slug.as_deref().unwrap_or(&project.id),
+                ]);
+            let gallery = project
+                .gallery
+                .iter()
+                .find(|image| image.featured)
+                .or_else(|| project.gallery.first());
+            let body: String = project.body.chars().take(32_768).collect();
+            json!({
+                "description": project.description,
+                "body": body,
+                "license": project.license.name,
+                "downloads": project.downloads,
+                "updated": project.updated.format("%Y-%m-%d").to_string(),
+                "url": url.as_str(),
+                "gallery": gallery.map(|image| &image.url),
+            })
         }
         Request::Install {
             project,
