@@ -27,10 +27,14 @@ public sealed partial class MainWindow : Window
     private bool busy;
     private bool closed;
     private bool ready;
+    private bool filteringProfiles;
 
     public MainWindow()
     {
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(WindowTitleBar);
+        Navigation.SelectedItem = LibraryNavigation;
         ready = true;
         AppWindow.Resize(new SizeInt32(1160, 770));
         timer.Tick += async (_, _) => await Run(Update);
@@ -45,6 +49,7 @@ public sealed partial class MainWindow : Window
     private async void Start(object sender, RoutedEventArgs e)
     {
         Layout.Loaded -= Start;
+        await Run(RefreshAccountAvatar);
         await Run(Update);
         var importPath = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(arg =>
             Path.GetExtension(arg).Equals(".mrpack", StringComparison.OrdinalIgnoreCase) && File.Exists(arg));
@@ -91,12 +96,18 @@ public sealed partial class MainWindow : Window
     {
         var id = SelectedProfile?.id;
         var filtered = library.Where(p => p.name.Contains(Search.Text, StringComparison.CurrentCultureIgnoreCase)).ToArray();
-        Profiles.ItemsSource = filtered;
-        Profiles.SelectedItem = filtered.FirstOrDefault(p => p.id == id) ?? filtered.FirstOrDefault();
+        filteringProfiles = true;
+        try
+        {
+            Profiles.ItemsSource = filtered;
+            Profiles.SelectedItem = filtered.FirstOrDefault(p => p.id == id) ?? filtered.FirstOrDefault();
+        }
+        finally { filteringProfiles = false; }
     }
 
-    private async void SearchChanged(object sender, TextChangedEventArgs e)
+    private async void SearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     {
+        if (!ready) return;
         FilterProfiles();
         await Run(LoadSelected);
     }
@@ -196,7 +207,16 @@ public sealed partial class MainWindow : Window
         row.Children.Add(button);
     }
 
-    private async void Select(object sender, SelectionChangedEventArgs e) => await Run(LoadSelected);
+    private async void Select(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ready || filteringProfiles) return;
+        if (SelectedProfile is not null)
+        {
+            ShowLibrary();
+            Navigation.IsPaneOpen = false;
+        }
+        await Run(LoadSelected);
+    }
     private async void Refresh(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         coverId = null;
@@ -243,6 +263,7 @@ public sealed partial class MainWindow : Window
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         await core.Call<JsonElement>(new { method = "offline_login", name = input.Text });
+        await RefreshAccountAvatar();
         Status.Text = "Офлайн-акаунт вибрано.";
     });
 
@@ -278,6 +299,7 @@ public sealed partial class MainWindow : Window
         }
         if (code is null) return;
         await core.Call<JsonElement>(new { method = "finish_login", code });
+        await RefreshAccountAvatar();
         Status.Text = "Вхід у Microsoft виконано.";
     });
 }

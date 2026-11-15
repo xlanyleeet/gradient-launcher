@@ -23,7 +23,7 @@ public sealed partial class MainWindow
                 memory = memory.Text, java = java.Text }, "Налаштування профілю збережено.");
     });
 
-    private async void OpenSettings(object sender, RoutedEventArgs e) => await Run(async () =>
+    private Task OpenSettings() => Run(async () =>
     {
         var values = await core.Call<LaunchSettings>(new { method = "launch_settings" });
         MemorySetting.Text = values.memory_mib.ToString();
@@ -36,14 +36,14 @@ public sealed partial class MainWindow
         LibraryPage.Visibility = Visibility.Collapsed;
         DiscoverPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
+        Navigation.SelectedItem = SettingsNavigation;
         MemorySetting.Focus(FocusState.Programmatic);
     });
 
     private void CloseSettings(object sender, RoutedEventArgs e)
     {
         if (!SaveSettingsButton.IsEnabled) return;
-        SettingsPage.Visibility = Visibility.Collapsed;
-        LibraryPage.Visibility = Visibility.Visible;
+        ShowLibrary();
     }
 
     private async void SaveSettings(object sender, RoutedEventArgs e)

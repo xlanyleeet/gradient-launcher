@@ -117,6 +117,16 @@ public sealed partial class MainWindow
             await ApplyProfileChange(new { method = "remove_profile", id = profile.id });
     });
 
+    private async Task RefreshAccountAvatar()
+    {
+        var accounts = await core.Call<Account[]>(new { method = "accounts" });
+        var active = accounts.FirstOrDefault(account => account.selected);
+        AccountAvatar.DisplayName = active?.name ?? "";
+        var label = active is null ? "Акаунти Minecraft" : $"Акаунти Minecraft · {active.name}";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AccountsButton, label);
+        ToolTipService.SetToolTip(AccountsButton, label);
+    }
+
     private async void ManageAccounts(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         var accounts = await core.Call<Account[]>(new { method = "accounts" });
@@ -133,13 +143,20 @@ public sealed partial class MainWindow
         var result = await dialog.ShowAsync();
         if (list.SelectedItem is not Account account) return;
         if (result == ContentDialogResult.Primary)
-            await ApplyProfileChange(new { method = "use_account", id = account.id }, $"Основний акаунт · {account.name}");
+        {
+            await core.Call<JsonElement>(new { method = "use_account", id = account.id });
+            await RefreshAccountAvatar();
+            Status.Text = $"Основний акаунт · {account.name}";
+        }
         if (result == ContentDialogResult.Secondary)
         {
             var confirm = Editor("Видалити акаунт?", account.name, "Видалити");
             confirm.DefaultButton = ContentDialogButton.Close;
             if (await confirm.ShowAsync() == ContentDialogResult.Primary)
-                await ApplyProfileChange(new { method = "remove_account", id = account.id });
+            {
+                await core.Call<JsonElement>(new { method = "remove_account", id = account.id });
+                await RefreshAccountAvatar();
+            }
         }
     });
 }

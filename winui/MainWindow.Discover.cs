@@ -17,18 +17,18 @@ public sealed partial class MainWindow
     private SearchSpec? discoverSearch;
     private uint? discoverOffset;
 
-    private void OpenDiscover(object sender, RoutedEventArgs e)
+    private void OpenDiscover()
     {
         SettingsPage.Visibility = Visibility.Collapsed;
         LibraryPage.Visibility = Visibility.Collapsed;
         DiscoverPage.Visibility = Visibility.Visible;
+        Navigation.SelectedItem = DiscoverNavigation;
         DiscoverQuery.Focus(FocusState.Programmatic);
     }
 
     private void CloseDiscover(object sender, RoutedEventArgs e)
     {
-        DiscoverPage.Visibility = Visibility.Collapsed;
-        LibraryPage.Visibility = Visibility.Visible;
+        ShowLibrary();
     }
 
     private Task DiscoverAction(Func<Task> action) => Run(async () =>
