@@ -153,12 +153,12 @@ jobs:
         run: |
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-version
-      - name: Build Rust core
-        working-directory: core
-        run: cargo build --locked --release -p gradient-core
       - name: Build SwiftUI
         working-directory: swiftui
         run: swift build -c release
+      - name: Build Rust core
+        working-directory: core
+        run: cargo build --locked --release -p gradient-core
       - name: Package macOS drag-and-drop installer
         shell: bash
         env:

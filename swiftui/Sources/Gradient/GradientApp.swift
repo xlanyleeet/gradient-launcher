@@ -184,98 +184,14 @@ private struct LauncherView: View {
     private var sortedProfiles: [Profile] { profiles.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
 
     var body: some View {
+        launcherSheets
+    }
+
+    private var navigation: some View {
         NavigationSplitView {
-            List {
-                Section {
-                    Button(tr("Бібліотека"), systemImage: "square.grid.2x2", action: returnToLibrary)
-                        .buttonStyle(.plain)
-                    Button(tr("Каталог Modrinth"), systemImage: "magnifyingglass") { showDiscover = true }
-                        .buttonStyle(.plain)
-                }
-                Section(tr("Профілі")) {
-                    ForEach(showAllProfiles ? sortedProfiles : Array(sortedProfiles.prefix(max(1, sidebarLimit)))) { entry in
-                        Button { openProfile(entry) } label: {
-                            Label {
-                                Text(entry.name)
-                            } icon: {
-                                if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
-                                    Image(nsImage: image).resizable().scaledToFit()
-                                        .frame(width: 19, height: 19)
-                                } else {
-                                    Image(systemName: entry.running ? "play.circle.fill" : "cube")
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(!showLibraryHome && !showDiscover && entry.id == selectedID
-                                           ? Color.accentColor.opacity(0.16) : Color.clear)
-                    }
-                    if profiles.count > sidebarLimit {
-                        Button(tr(showAllProfiles ? "Менше" : "Більше")) { showAllProfiles.toggle() }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Section {
-                    Menu(tr("Додати профіль")) {
-                        Button(tr("Новий профіль"), action: beginCreateProfile)
-                        Button(tr("Імпортувати .mrpack"), action: importPack)
-                        Button(tr("Імпорт з лаунчера")) { transfer = .importLauncher }
-                    }
-                    .menuStyle(.borderlessButton)
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 218, ideal: 218, max: 218)
-            .searchable(text: $search, placement: .sidebar, prompt: Text(tr("Пошук профілів")))
-            .safeAreaInset(edge: .bottom) {
-                accountMenu
-            }
+            sidebar
         } detail: {
-            if showDiscover {
-                DiscoverView(core: core, profileID: selectedID, incomingLink: $catalogLink,
-                             back: returnToLibrary, installed: { loadedTab = nil })
-            } else if showLibraryHome {
-                libraryHome
-            } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    hero
-                    VStack(alignment: .leading, spacing: 14) {
-                        Divider()
-                        Text(profile.map {
-                            tr("Minecraft {0}   ·   {1}   ·   Останній запуск  {2}", String(describing: $0.version), String(describing: $0.loader), String(describing: $0.last_played ?? "—"))
-                        } ?? tr("Виберіть профіль або імпортуйте модпак."))
-                        .font(.callout)
-                        Divider()
-                        if !status.isEmpty { Text(status).font(.callout) }
-                        Picker(tr("Деталі"), selection: $tab) {
-                            ForEach(ProfileTab.allCases, id: \.self) { item in
-                                Text(tr(item.rawValue)).tag(item)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
-                        tabContent
-                    }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 30)
-                }
-            }
-            .background(tint)
-            .toolbar {
-                backToolbar
-                Button(tr("Новий профіль"), systemImage: "plus.square", action: beginCreateProfile)
-                Button(tr("Імпортувати .mrpack"), systemImage: "plus", action: importPack)
-                Button(tr("Імпорт з лаунчера"), systemImage: "folder.badge.plus") { transfer = .importLauncher }
-                Button(tr("Оновити"), systemImage: "arrow.clockwise") {
-                    coverKey = nil
-                    loadedTab = nil
-                    logProfile = nil
-                    fileRefresh += 1
-                    Task { await perform(refresh) }
-                }
-            }
-            }
+            detailView
         }
         .task {
             while !Task.isCancelled {
@@ -301,6 +217,21 @@ private struct LauncherView: View {
                 showDiscover = true
             }
         }
+        .onChange(of: selectedID) {
+            Task { await perform(loadSelection) }
+        }
+        .onChange(of: sidebarLimit) { showAllProfiles = false }
+        .onChange(of: tab) {
+            Task { await perform(loadSelection) }
+        }
+        .onChange(of: selectedLog) {
+            Task { await perform(loadSelection) }
+        }
+        .onChange(of: selectedScreenshot) { updateScreenshotPreview() }
+    }
+
+    private var launcherConfirmations: some View {
+        navigation
         .confirmationDialog(tr("Запустити Minecraft?"), isPresented: Binding(
             get: { shortcutProfile != nil },
             set: { if !$0 { shortcutProfile = nil } }
@@ -332,17 +263,6 @@ private struct LauncherView: View {
             }
             Button(tr("Скасувати"), role: .cancel) {}
         } message: { Text($0.lastPathComponent) }
-        .onChange(of: selectedID) {
-            Task { await perform(loadSelection) }
-        }
-        .onChange(of: sidebarLimit) { showAllProfiles = false }
-        .onChange(of: tab) {
-            Task { await perform(loadSelection) }
-        }
-        .onChange(of: selectedLog) {
-            Task { await perform(loadSelection) }
-        }
-        .onChange(of: selectedScreenshot) { updateScreenshotPreview() }
         .confirmationDialog(tr("Видалити контент?"), isPresented: Binding(
             get: { pendingRemoval != nil },
             set: { if !$0 { pendingRemoval = nil } }
@@ -354,6 +274,19 @@ private struct LauncherView: View {
         } message: { removal in
             Text(removal.entry.name)
         }
+        .alert(tr("Видалити профіль?"), isPresented: Binding(
+            get: { profileToRemove != nil },
+            set: { if !$0 { profileToRemove = nil } }
+        ), presenting: profileToRemove) { entry in
+            Button(tr("Видалити"), role: .destructive) { mutate("remove_profile", ["id": entry.id]) }
+            Button(tr("Скасувати"), role: .cancel) {}
+        } message: { entry in
+            Text(tr("«{0}» і його локальні файли буде видалено.", String(describing: entry.name)))
+        }
+    }
+
+    private var accountPresentation: some View {
+        launcherConfirmations
         .alert(tr("Офлайн-акаунт"), isPresented: $showLogin) {
             TextField(tr("Ім’я гравця"), text: $nickname)
             Button(tr("Зберегти")) {
@@ -371,6 +304,10 @@ private struct LauncherView: View {
                 .frame(width: 680, height: 550)
             }
         }
+    }
+
+    private var launcherSheets: some View {
+        accountPresentation
         .sheet(item: $librarySheet) { sheet in
             if sheet == .launch, let editedProfile {
                 ProfileLaunchSettingsView(core: core, profileID: editedProfile.id) {
@@ -395,14 +332,115 @@ private struct LauncherView: View {
             JobDiagnosticsView(core: core, jobID: job.id)
         }
         .sheet(isPresented: $skinSettings) { SkinSettingsView(core: core) }
-        .alert(tr("Видалити профіль?"), isPresented: Binding(
-            get: { profileToRemove != nil },
-            set: { if !$0 { profileToRemove = nil } }
-        ), presenting: profileToRemove) { entry in
-            Button(tr("Видалити"), role: .destructive) { mutate("remove_profile", ["id": entry.id]) }
-            Button(tr("Скасувати"), role: .cancel) {}
-        } message: { entry in
-            Text(tr("«{0}» і його локальні файли буде видалено.", String(describing: entry.name)))
+    }
+
+    private var sidebarProfiles: [Profile] {
+        let entries = sortedProfiles
+        return showAllProfiles ? entries : Array(entries.prefix(max(1, sidebarLimit)))
+    }
+
+    private func sidebarProfileRow(_ entry: Profile) -> some View {
+        let selected = !showLibraryHome && !showDiscover && entry.id == selectedID
+        return Button {
+            openProfile(entry)
+        } label: {
+            Label {
+                Text(entry.name)
+            } icon: {
+                if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
+                    Image(nsImage: image).resizable().scaledToFit().frame(width: 19, height: 19)
+                } else {
+                    Image(systemName: entry.running ? "play.circle.fill" : "cube")
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(selected ? Color.accentColor.opacity(0.16) : Color.clear)
+    }
+
+    private var sidebar: some View {
+        List {
+            Section {
+                Button(tr("Бібліотека"), systemImage: "square.grid.2x2", action: returnToLibrary)
+                    .buttonStyle(.plain)
+                Button(tr("Каталог Modrinth"), systemImage: "magnifyingglass") { showDiscover = true }
+                    .buttonStyle(.plain)
+            }
+            Section(tr("Профілі")) {
+                ForEach(sidebarProfiles, content: sidebarProfileRow)
+                if profiles.count > sidebarLimit {
+                    Button(tr(showAllProfiles ? "Менше" : "Більше")) { showAllProfiles.toggle() }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section {
+                Menu(tr("Додати профіль")) {
+                    Button(tr("Новий профіль"), action: beginCreateProfile)
+                    Button(tr("Імпортувати .mrpack"), action: importPack)
+                    Button(tr("Імпорт з лаунчера")) { transfer = .importLauncher }
+                }
+                .menuStyle(.borderlessButton)
+            }
+        }
+        .navigationSplitViewColumnWidth(min: 218, ideal: 218, max: 218)
+        .searchable(text: $search, placement: .sidebar, prompt: Text(tr("Пошук профілів")))
+        .safeAreaInset(edge: .bottom) {
+            accountMenu
+        }
+    }
+
+    @ViewBuilder private var detailView: some View {
+        if showDiscover {
+            DiscoverView(core: core, profileID: selectedID, incomingLink: $catalogLink,
+                         back: returnToLibrary, installed: { loadedTab = nil })
+        } else if showLibraryHome {
+            libraryHome
+        } else {
+            profileDetails
+        }
+    }
+
+    private var profileDetails: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                hero
+                VStack(alignment: .leading, spacing: 14) {
+                    Divider()
+                    Text(profile.map {
+                        tr("Minecraft {0}   ·   {1}   ·   Останній запуск  {2}", String(describing: $0.version), String(describing: $0.loader), String(describing: $0.last_played ?? "—"))
+                    } ?? tr("Виберіть профіль або імпортуйте модпак."))
+                    .font(.callout)
+                    Divider()
+                    if !status.isEmpty { Text(status).font(.callout) }
+                    Picker(tr("Деталі"), selection: $tab) {
+                        ForEach(ProfileTab.allCases, id: \.self) { item in
+                            Text(tr(item.rawValue)).tag(item)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    tabContent
+                }
+                .padding(.horizontal, 30)
+                .padding(.bottom, 30)
+            }
+        }
+        .background(tint)
+        .toolbar {
+            backToolbar
+            ToolbarItemGroup {
+                Button(tr("Новий профіль"), systemImage: "plus.square", action: beginCreateProfile)
+                Button(tr("Імпортувати .mrpack"), systemImage: "plus", action: importPack)
+                Button(tr("Імпорт з лаунчера"), systemImage: "folder.badge.plus") { transfer = .importLauncher }
+                Button(tr("Оновити"), systemImage: "arrow.clockwise") {
+                    coverKey = nil
+                    loadedTab = nil
+                    logProfile = nil
+                    fileRefresh += 1
+                    Task { await perform(refresh) }
+                }
+            }
         }
     }
 
