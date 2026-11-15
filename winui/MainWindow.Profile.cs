@@ -11,10 +11,16 @@ namespace Gradient;
 public sealed partial class MainWindow
 {
     private sealed record ContentEntry(string path, string name, string file, string? version,
-        bool enabled, bool locked, bool synced, string kind, bool has_update, bool can_choose_version);
+        bool enabled, bool locked, bool synced, string kind, bool has_update, bool can_choose_version, bool pack_default);
     private sealed record InstalledModVersions(string? current_id, DiscoverVersion[] options);
     private sealed record WorldEntry(string id, string name, string? last_played);
     private string? loadedTab;
+
+    private async void ChangeContentFilter(object sender, RoutedEventArgs args)
+    {
+        loadedTab = null;
+        if (ready) await Run(LoadSelected, waitForCore: true);
+    }
 
     private async void DetailChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -38,7 +44,8 @@ public sealed partial class MainWindow
                 var entries = await core.Call<ContentEntry[]>(new { method = "content", id = profile.id });
                 if (SelectedProfile?.id != profile.id || !Equals(Details.SelectedItem, ContentTab)) return;
                 panel.Children.Clear();
-                foreach (var entry in entries) panel.Children.Add(ContentRow(profile, entry));
+                foreach (var entry in entries.Where(entry => !entry.pack_default || ShowPackContent.IsChecked == true))
+                    panel.Children.Add(ContentRow(profile, entry));
             }
             else
             {

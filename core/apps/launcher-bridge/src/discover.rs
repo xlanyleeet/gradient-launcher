@@ -362,6 +362,8 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                 "updated": project.updated.format("%Y-%m-%d").to_string(),
                 "url": url.as_str(),
                 "gallery": gallery.map(|image| &image.url),
+                "gallery_images": project.gallery.iter().take(12).map(|image| &image.url).collect::<Vec<_>>(),
+                "icon": project.icon_url,
             })
         }
         Request::ResolveLink { url } => {

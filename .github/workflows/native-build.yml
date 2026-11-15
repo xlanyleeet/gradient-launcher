@@ -194,7 +194,7 @@ jobs:
           plutil -replace CFBundleVersion -string "$GRADIENT_NATIVE_VERSION" "$app/Contents/Info.plist"
           plutil -lint "$app/Contents/Info.plist"
           cp "$output/Gradient" core/target/release/gradient-core "$app/Contents/MacOS/"
-          cp swiftui/Sources/Gradient/Resources/{Cover.png,InterfaceStrings.json} "$app/Contents/Resources/"
+          cp swiftui/Sources/Gradient/Resources/{Cover.png,InterfaceStrings.json,PlayerHead.png} "$app/Contents/Resources/"
           cp swiftui/Launcher.icns "$app/Contents/Resources/"
           framework="$(find swiftui/.build/artifacts -type d -path '*/macos-*/Sparkle.framework' -print -quit)"
           test -d "$framework"

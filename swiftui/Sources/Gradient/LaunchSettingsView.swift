@@ -17,6 +17,7 @@ struct LaunchSettingsView: View {
     let core: CoreClient
     @AppStorage(InterfacePreferences.themeKey) private var theme = "system"
     @AppStorage(InterfacePreferences.languageKey) private var language = "uk"
+    @AppStorage("interface.sidebarProfiles") private var sidebarLimit = 6
 
     private struct UpdateInfo: Decodable {
         struct Release: Decodable {
@@ -51,6 +52,7 @@ struct LaunchSettingsView: View {
     var body: some View {
         Form {
             Section(tr("Вигляд і мова")) {
+                Stepper("\(tr("Профілів у бічній панелі")) · \(sidebarLimit)", value: $sidebarLimit, in: 1...30)
                 Picker(tr("Тема"), selection: $theme) {
                     Text(tr("Системна")).tag("system")
                     Text(tr("Світла")).tag("light")

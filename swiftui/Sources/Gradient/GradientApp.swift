@@ -38,6 +38,14 @@ private struct Account: Decodable, Identifiable {
     let id: String
     let name: String
     let selected: Bool
+    let avatar_url: URL?
+}
+
+private struct QuickEntry: Decodable, Hashable {
+    let id: String
+    let profile: String
+    let name: String
+    let server: Bool
 }
 
 private struct ShortcutProfile: Decodable {
@@ -65,9 +73,9 @@ private struct Job: Decodable, Identifiable {
 }
 
 private enum ProfileTab: String, CaseIterable {
+    case content = "Контент"
     case log = "Логи"
     case queue = "Завантаження"
-    case content = "Контент"
     case worlds = "Світи"
     case screenshots = "Скриншоти"
     case files = "Файли"
@@ -85,6 +93,7 @@ private struct ContentEntry: Decodable, Identifiable {
     let synced: Bool
     let has_update: Bool
     let can_choose_version: Bool
+    let pack_default: Bool?
     var id: String { path }
 }
 
@@ -121,6 +130,12 @@ private struct LauncherView: View {
     @State private var jobs: [Job] = []
     @State private var selectedID: String?
     @State private var showDiscover = false
+    @State private var showLibraryHome = true
+    @State private var showAllProfiles = false
+    @AppStorage("interface.sidebarProfiles") private var sidebarLimit = 6
+    @State private var quickEntries: [QuickEntry] = []
+    @State private var quickExpanded = true
+    @State private var showPackContent = false
     @State private var pendingPack: URL?
     @State private var catalogLink: String?
     @State private var shortcutProfile: ShortcutProfile?
@@ -136,7 +151,7 @@ private struct LauncherView: View {
     @State private var logWasRunning = false
     @State private var status = ""
     @State private var busy = false
-    @State private var tab = ProfileTab.log
+    @State private var tab = ProfileTab.content
     @State private var loadedTab: String?
     @State private var content: [ContentEntry] = []
     @State private var worlds: [WorldEntry] = []
@@ -164,30 +179,50 @@ private struct LauncherView: View {
 
     private var profile: Profile? { profiles.first { $0.id == selectedID } }
     private var filteredProfiles: [Profile] {
-        search.isEmpty ? profiles : profiles.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        sortedProfiles.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }
     }
+    private var sortedProfiles: [Profile] { profiles.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedID) {
+            List {
                 Section {
+                    Button(tr("Бібліотека"), systemImage: "square.grid.2x2", action: returnToLibrary)
+                        .buttonStyle(.plain)
                     Button(tr("Каталог Modrinth"), systemImage: "magnifyingglass") { showDiscover = true }
                         .buttonStyle(.plain)
                 }
                 Section(tr("Профілі")) {
-                    ForEach(filteredProfiles) { entry in
-                        Label {
-                            Text(entry.name)
-                        } icon: {
-                            if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
-                                Image(nsImage: image).resizable().scaledToFit()
-                                    .frame(width: 19, height: 19)
-                            } else {
-                                Image(systemName: entry.running ? "play.circle.fill" : "cube")
+                    ForEach(showAllProfiles ? sortedProfiles : Array(sortedProfiles.prefix(max(1, sidebarLimit)))) { entry in
+                        Button { openProfile(entry) } label: {
+                            Label {
+                                Text(entry.name)
+                            } icon: {
+                                if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
+                                    Image(nsImage: image).resizable().scaledToFit()
+                                        .frame(width: 19, height: 19)
+                                } else {
+                                    Image(systemName: entry.running ? "play.circle.fill" : "cube")
+                                }
                             }
                         }
-                            .tag(entry.id)
+                        .buttonStyle(.plain)
+                        .listRowBackground(!showLibraryHome && !showDiscover && entry.id == selectedID
+                                           ? Color.accentColor.opacity(0.16) : Color.clear)
                     }
+                    if profiles.count > sidebarLimit {
+                        Button(tr(showAllProfiles ? "Менше" : "Більше")) { showAllProfiles.toggle() }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Section {
+                    Menu(tr("Додати профіль")) {
+                        Button(tr("Новий профіль"), action: beginCreateProfile)
+                        Button(tr("Імпортувати .mrpack"), action: importPack)
+                        Button(tr("Імпорт з лаунчера")) { transfer = .importLauncher }
+                    }
+                    .menuStyle(.borderlessButton)
                 }
             }
             .navigationSplitViewColumnWidth(min: 218, ideal: 218, max: 218)
@@ -198,7 +233,9 @@ private struct LauncherView: View {
         } detail: {
             if showDiscover {
                 DiscoverView(core: core, profileID: selectedID, incomingLink: $catalogLink,
-                             back: { showDiscover = false }, installed: { loadedTab = nil })
+                             back: returnToLibrary, installed: { loadedTab = nil })
+            } else if showLibraryHome {
+                libraryHome
             } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -226,6 +263,7 @@ private struct LauncherView: View {
             }
             .background(tint)
             .toolbar {
+                backToolbar
                 Button(tr("Новий профіль"), systemImage: "plus.square", action: beginCreateProfile)
                 Button(tr("Імпортувати .mrpack"), systemImage: "plus", action: importPack)
                 Button(tr("Імпорт з лаунчера"), systemImage: "folder.badge.plus") { transfer = .importLauncher }
@@ -295,9 +333,9 @@ private struct LauncherView: View {
             Button(tr("Скасувати"), role: .cancel) {}
         } message: { Text($0.lastPathComponent) }
         .onChange(of: selectedID) {
-            if catalogLink == nil { showDiscover = false }
             Task { await perform(loadSelection) }
         }
+        .onChange(of: sidebarLimit) { showAllProfiles = false }
         .onChange(of: tab) {
             Task { await perform(loadSelection) }
         }
@@ -368,6 +406,100 @@ private struct LauncherView: View {
         }
     }
 
+    @ToolbarContentBuilder private var backToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button(tr("До бібліотеки"), systemImage: "chevron.left", action: returnToLibrary).labelStyle(.iconOnly)
+        }
+    }
+
+    private func returnToLibrary() {
+        showDiscover = false
+        showLibraryHome = true
+    }
+
+    private func openProfile(_ entry: Profile) {
+        if selectedID != entry.id { tab = .content }
+        selectedID = entry.id
+        showDiscover = false
+        showLibraryHome = false
+    }
+
+    private var libraryHome: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if !quickEntries.isEmpty {
+                    DisclosureGroup(tr("Швидкий перехід"), isExpanded: $quickExpanded) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 185))], spacing: 10) {
+                            ForEach(quickEntries, id: \.self) { entry in
+                                Button {
+                                    let key = entry.server ? "server" : "world"
+                                    mutate(entry.server ? "join_server" : "open_world", ["id": entry.profile, key: entry.id])
+                                } label: {
+                                    VStack(alignment: .leading) {
+                                        Label(entry.name, systemImage: entry.server ? "network" : "globe").lineLimit(1)
+                                        Text(profiles.first { $0.id == entry.profile }?.name ?? "").font(.caption)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12)
+                                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(busy)
+                            }
+                        }
+                        .padding(.top, 8)
+                    }
+                }
+                HStack {
+                    Text(tr("Бібліотека")).font(.largeTitle.bold())
+                    Spacer()
+                    Button(tr("Новий профіль"), systemImage: "plus", action: beginCreateProfile)
+                }
+                if !status.isEmpty { Text(status).font(.callout) }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 165), spacing: 12)], spacing: 12) {
+                    ForEach(filteredProfiles) { entry in
+                        Button { openProfile(entry) } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Group {
+                                    if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
+                                        Image(nsImage: image).resizable().scaledToFit()
+                                    } else {
+                                        Image(systemName: "cube").font(.largeTitle)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 103)
+                                Text(entry.name).font(.headline).lineLimit(1)
+                                Text("\(entry.loader) \(entry.version)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .task {
+            do { quickEntries = try await core.call("quick_play", as: [QuickEntry].self) }
+            catch { status = error.localizedDescription }
+        }
+    }
+
+    private var defaultAccountHead: some View {
+        let url = Bundle.main.url(forResource: "PlayerHead", withExtension: "png")
+            ?? Bundle.module.url(forResource: "PlayerHead", withExtension: "png")
+        return Group {
+            if let url, let head = NSImage(contentsOf: url) {
+                Image(nsImage: head).resizable().interpolation(.none).scaledToFit()
+            } else {
+                Image(systemName: "person.fill")
+            }
+        }
+    }
+
     private func tabKey(_ profile: Profile, _ tab: ProfileTab) -> String {
         "\(profile.id)/\(profile.running)/\(profile.quarantined)/\(tab)"
     }
@@ -394,14 +526,17 @@ private struct LauncherView: View {
         case .content, .worlds:
             if let profile {
                 if tab == .content {
+                    Toggle(tr("Показувати стандартний контент"), isOn: $showPackContent)
+                        .toggleStyle(.checkbox)
                     Button(tr("Додати .jar"), systemImage: "plus") { addMod(profile) }
                         .disabled(busy || profile.running || profile.quarantined)
                 }
                 if loadedTab != tabKey(profile, tab) {
                     ProgressView()
                 } else if tab == .content {
-                    if content.isEmpty { Text(tr("Контенту ще немає.")) }
-                    ForEach(content) { entry in contentRow(profile, entry) }
+                    let visible = content.filter { showPackContent || $0.pack_default != true }
+                    if visible.isEmpty { Text(tr("Контенту ще немає.")) }
+                    ForEach(visible) { entry in contentRow(profile, entry) }
                 } else {
                     if worlds.isEmpty { Text(tr("Світів ще немає.")) }
                     ForEach(worlds) { world in worldRow(profile, world) }
@@ -650,6 +785,7 @@ private struct LauncherView: View {
             profiles = try await core.call("library", as: [Profile].self)
             search = ""
             selectedID = target.id
+            showLibraryHome = false
             if target.quarantined {
                 status = tr("Цей профіль заблоковано.")
             } else if profile?.running == true {
@@ -695,10 +831,10 @@ private struct LauncherView: View {
             HStack(spacing: 9) {
                 ZStack {
                     Circle().fill(Color.accentColor.opacity(0.18))
-                    if let active, let initial = active.name.first {
-                        Text(String(initial).uppercased()).font(.callout.weight(.semibold))
-                    } else {
-                        Image(systemName: "person.fill").font(.callout)
+                    AsyncImage(url: active?.avatar_url) { image in
+                        image.resizable().interpolation(.none).scaledToFit()
+                    } placeholder: {
+                        defaultAccountHead
                     }
                 }
                 .frame(width: 30, height: 30)
@@ -820,7 +956,7 @@ private struct LauncherView: View {
 
     @MainActor private func refresh() async throws {
         profiles = try await core.call("library", as: [Profile].self)
-        if profile == nil { selectedID = profiles.first?.id }
+        if selectedID != nil && profile == nil { returnToLibrary(); selectedID = nil }
         jobs = try await core.call("queue", as: [Job].self)
         accounts = try await core.call("accounts", as: [Account].self)
         try await loadSelection()

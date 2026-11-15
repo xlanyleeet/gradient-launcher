@@ -1,5 +1,12 @@
 {
   "english": {
+    "Назад": "Back",
+    "Опис": "Description",
+    "Більше": "Show more",
+    "Менше": "Show less",
+    "Профілів у бічній панелі": "Profiles in the sidebar",
+    "Показувати стандартний контент": "Show content included with the modpack",
+    "Швидкий перехід": "Quick play",
     " · Керований": " · Managed",
     "+  Додати .jar": "+  Add .jar",
     "/{0} · Порожня папка": "/{0} · Empty folder",

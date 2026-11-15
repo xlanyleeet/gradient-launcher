@@ -10,7 +10,7 @@ namespace Gradient;
 
 public sealed partial class MainWindow
 {
-    public sealed record Account(string id, string name, bool selected)
+    public sealed record Account(string id, string name, bool selected, string? avatar_url)
     {
         public string Label => selected ? Tr("{0} · Основний", name) : name;
     }
@@ -52,7 +52,8 @@ public sealed partial class MainWindow
         var profile = library.FirstOrDefault(entry => entry.id == target.id);
         if (profile is not null)
         {
-            Profiles.SelectedItem = profile;
+            ShowProfile(profile.id);
+            FilterProfiles();
             await LoadSelected();
         }
         if (target.quarantined || profile?.running == true)
@@ -189,10 +190,21 @@ public sealed partial class MainWindow
     {
         var accounts = await core.Call<Account[]>(new { method = "accounts" });
         var active = accounts.FirstOrDefault(account => account.selected);
-        AccountAvatar.DisplayName = active?.name ?? "";
+        AccountNickname.Text = active?.name ?? Tr("Акаунти Minecraft");
+        AccountAvatar.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
+            Uri.TryCreate(active?.avatar_url, UriKind.Absolute, out var avatar) && avatar.Scheme == Uri.UriSchemeHttps
+                ? avatar : DefaultAccountAvatar);
         var label = active is null ? Tr("Акаунти Minecraft") : Tr("Акаунти Minecraft · {0}", active.name);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AccountsButton, label);
         ToolTipService.SetToolTip(AccountsButton, label);
+    }
+
+    private static readonly Uri DefaultAccountAvatar = new("ms-appx:///Assets/PlayerHead.png");
+
+    private void AccountAvatarFailed(object sender, ExceptionRoutedEventArgs args)
+    {
+        if (AccountAvatar.Source is Microsoft.UI.Xaml.Media.Imaging.BitmapImage source && source.UriSource != DefaultAccountAvatar)
+            AccountAvatar.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(DefaultAccountAvatar);
     }
 
     private async void ManageAccounts(object sender, RoutedEventArgs e) => await Run(async () =>

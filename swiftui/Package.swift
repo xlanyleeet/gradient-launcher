@@ -13,7 +13,7 @@ let package = Package(
         .executableTarget(
             name: "Gradient",
             dependencies: ["Sparkle"],
-            resources: [.copy("Resources/Cover.png"), .copy("Resources/InterfaceStrings.json")],
+            resources: [.copy("Resources/Cover.png"), .copy("Resources/InterfaceStrings.json"), .copy("Resources/PlayerHead.png")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         )
     ],

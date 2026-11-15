@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Markup;
 
 namespace Gradient;
 
-internal sealed record InterfacePreferences(string Theme = "system", string Language = "uk")
+internal sealed record InterfacePreferences(string Theme = "system", string Language = "uk", int SidebarProfiles = 6)
 {
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

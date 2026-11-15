@@ -14,6 +14,7 @@ public sealed partial class MainWindow : Window
 {
     public sealed record Profile(string id, string name, string version, string loader, string? last_played, bool running, bool quarantined, string? icon)
     {
+        public string GameLabel => $"{loader} {version}";
         public BitmapImage? IconSource => Uri.TryCreate(icon, UriKind.Absolute, out var uri) && uri.IsFile
             ? new BitmapImage(uri) : null;
     }
@@ -24,7 +25,8 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(2) };
     private Profile[] library = [];
     private Job[] jobs = [];
-    private Profile? SelectedProfile => Profiles.SelectedItem as Profile;
+    private string? selectedProfileId;
+    private Profile? SelectedProfile => library.FirstOrDefault(profile => profile.id == selectedProfileId);
     private string? coverId;
     private bool busy;
     private readonly SemaphoreSlim coreOperation = new(1);
@@ -37,6 +39,8 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         InitializeAppearance();
+        Layout.SizeChanged += (_, args) => Search.Width = Math.Clamp(args.NewSize.Width - 400, 120, 760);
+        Status.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) => LibraryStatus.Text = Status.Text);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Launcher.ico"));
@@ -57,6 +61,7 @@ public sealed partial class MainWindow : Window
         Layout.Loaded -= Start;
         await Run(RefreshAccountAvatar);
         await Run(Update);
+        await Run(LoadQuickPlay);
         started.TrySetResult();
         if (!closed) timer.Start();
     }
@@ -127,22 +132,26 @@ public sealed partial class MainWindow : Window
 
     private void FilterProfiles()
     {
-        var id = SelectedProfile?.id;
-        var filtered = library.Where(p => p.name.Contains(Search.Text, StringComparison.CurrentCultureIgnoreCase)).ToArray();
+        var ordered = library.OrderBy(p => p.name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+        var filtered = ordered.Where(p => p.name.Contains(Search.Text, StringComparison.CurrentCultureIgnoreCase)).ToArray();
+        LibraryCards.ItemsSource = filtered;
+        var sidebar = showAllProfiles ? ordered : ordered.Take(SidebarLimit).ToArray();
+        MoreProfilesButton.Visibility = library.Length > SidebarLimit ? Visibility.Visible : Visibility.Collapsed;
+        MoreProfilesButton.Content = Tr(showAllProfiles ? "Менше" : "Більше");
         filteringProfiles = true;
         try
         {
-            Profiles.ItemsSource = filtered;
-            Profiles.SelectedItem = filtered.FirstOrDefault(p => p.id == id) ?? filtered.FirstOrDefault();
+            Profiles.ItemsSource = sidebar;
+            Profiles.SelectedItem = sidebar.FirstOrDefault(p => p.id == selectedProfileId);
         }
         finally { filteringProfiles = false; }
     }
 
-    private async void SearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
+    private void SearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     {
         if (!ready) return;
+        if (HomeSearch.Text != sender.Text) HomeSearch.Text = sender.Text;
         FilterProfiles();
-        await Run(LoadSelected);
     }
 
     private async Task LoadSelected()
@@ -265,8 +274,7 @@ public sealed partial class MainWindow : Window
     private async void Select(object sender, SelectionChangedEventArgs e)
     {
         if (!ready || filteringProfiles) return;
-        if (SelectedProfile is not null) ShowLibrary();
-        await Run(LoadSelected);
+        if (Profiles.SelectedItem is Profile profile) await OpenProfileDetails(profile);
     }
     private async void Refresh(object sender, RoutedEventArgs e) => await Run(async () =>
     {

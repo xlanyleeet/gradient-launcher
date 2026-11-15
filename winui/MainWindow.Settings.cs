@@ -155,6 +155,9 @@ public sealed partial class MainWindow
         SaveSettingsButton.IsEnabled = true;
         SettingsStatus.Text = "";
         LibraryPage.Visibility = Visibility.Collapsed;
+        LibraryHome.Visibility = Visibility.Collapsed;
+        ProjectPage.Visibility = Visibility.Collapsed;
+        WindowTitleBar.IsBackButtonVisible = true;
         DiscoverPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
         Navigation.SelectedItem = SettingsNavigation;

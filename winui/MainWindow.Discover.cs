@@ -23,7 +23,7 @@ public sealed partial class MainWindow
 
     private sealed record SearchPage(DiscoverHit[] hits, uint? next_offset);
     private sealed record ProjectDetails(string description, string body, string license,
-        uint downloads, string updated, string url, string? gallery);
+        uint downloads, string updated, string url, string? gallery, string[]? gallery_images, string? icon);
     private sealed record LinkedProject(string id, string name, string kind, string? preferred_version);
     private sealed record SearchSpec(string Query, string Kind, string? Profile, string? Sort, string? GameVersion, string? Loader);
     private SearchSpec? discoverSearch;
@@ -33,8 +33,11 @@ public sealed partial class MainWindow
 
     private void ShowDiscoverPage()
     {
+        ProjectPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Collapsed;
         LibraryPage.Visibility = Visibility.Collapsed;
+        LibraryHome.Visibility = Visibility.Collapsed;
+        WindowTitleBar.IsBackButtonVisible = true;
         DiscoverPage.Visibility = Visibility.Visible;
         Navigation.SelectedItem = DiscoverNavigation;
         DiscoverQuery.Focus(FocusState.Programmatic);
@@ -48,15 +51,14 @@ public sealed partial class MainWindow
             await SubmitDiscoverSearch();
     }
 
-    private void CloseDiscover(object sender, RoutedEventArgs e)
-    {
-        ShowLibrary();
-    }
-
     private Task DiscoverAction(Func<Task> action) => Run(async () =>
     {
         try { await action(); }
-        catch (Exception error) { DiscoverStatus.Text = error.Message; }
+        catch (Exception error)
+        {
+            if (ProjectPage.Visibility == Visibility.Visible && projectNotice is not null) projectNotice.Text = error.Message;
+            else DiscoverStatus.Text = error.Message;
+        }
     }, waitForCore: true);
 
     private async void DiscoverSearch(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs e) =>
@@ -141,25 +143,31 @@ public sealed partial class MainWindow
     {
         if (e.ClickedItem is not DiscoverHit hit || discoverSearch is not { } search || search.Kind != discoverKind) return;
         await DiscoverAction(() => search.Kind == "server" ? ShowCatalogServer(hit)
-            : ShowProject(hit.id, hit.name, search.Kind, search.Profile, null));
+            : ShowProject(hit.id, hit.name, search.Kind, search.Profile, null, hit.author));
     }
 
-    private async Task ShowCatalogServer(DiscoverHit server)
+    private Task ShowCatalogServer(DiscoverHit server)
     {
-        var content = new StackPanel { Spacing = 10 };
-        content.Children.Add(new TextBlock { Text = server.description, TextWrapping = TextWrapping.Wrap });
+        var profile = SelectedProfile;
+        bool canAdd = profile is not null && !string.IsNullOrWhiteSpace(server.address);
+        var content = BeginProjectPage(server.name, server.author, server.description, server.icon, null, server.url);
         if (server.address is { } address)
             content.Children.Add(new TextBlock { Text = address, IsTextSelectionEnabled = true });
-        if (Uri.TryCreate(server.url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
-            content.Children.Add(new HyperlinkButton { Content = Tr("Відкрити на Modrinth"), NavigateUri = uri });
-        var profile = SelectedProfile;
-        var dialog = Editor(server.name, content, Tr("Додати сервер"));
-        dialog.CloseButtonText = Tr("Закрити");
-        dialog.IsPrimaryButtonEnabled = profile is not null && !string.IsNullOrEmpty(server.address);
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary || profile is null) return;
-        await core.Call<JsonElement>(new { method = "save_server", id = profile.id, name = server.name, address = server.address });
-        serverViewKey = null;
-        DiscoverStatus.Text = Tr("Сервер додано.");
+        var add = new Button { Content = Tr("Додати сервер"), IsEnabled = canAdd };
+        add.Click += async (_, _) => await DiscoverAction(async () =>
+        {
+            if (profile is null || !add.IsEnabled || ProjectPage.Visibility != Visibility.Visible) return;
+            add.IsEnabled = false;
+            try
+            {
+                await core.Call<JsonElement>(new { method = "save_server", id = profile.id, name = server.name, address = server.address });
+                serverViewKey = null;
+                if (projectNotice is { } notice) notice.Text = Tr("Сервер додано.");
+            }
+            catch { add.IsEnabled = canAdd; throw; }
+        });
+        content.Children.Add(add);
+        return Task.CompletedTask;
     }
 
     private async void OpenLinkClick(object sender, RoutedEventArgs e)
@@ -183,54 +191,110 @@ public sealed partial class MainWindow
             linked.kind == "modpack" ? null : SelectedProfile?.id, linked.preferred_version);
     }
 
-    private async Task ShowProject(string id, string name, string kind, string? profile, string? preferredVersion)
+    private TextBlock? projectNotice;
+
+    private StackPanel BeginProjectPage(string title, string? subtitle, string description, string? icon, string? banner, string? url)
     {
-            DiscoverStatus.Text = Tr("Завантажуємо проєкт…");
-            var details = await core.Call<ProjectDetails>(new
+        ProjectContent.Children.Clear();
+        DiscoverPage.Visibility = Visibility.Collapsed;
+        ProjectPage.Visibility = Visibility.Visible;
+        ProjectPage.ChangeView(null, 0, null, true);
+        var hero = new Grid { MinHeight = 250, CornerRadius = new CornerRadius(16) };
+        if (ProjectImage(banner, 1100) is { } cover)
+        {
+            cover.Height = 336;
+            hero.Children.Add(cover);
+        }
+        var header = new StackPanel { Spacing = 10, Padding = new Thickness(24), MaxWidth = 560,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
+            Background = ProjectPage.Background };
+        if (ProjectImage(icon, 88) is { } logo)
+        {
+            logo.Width = logo.Height = 68;
+            logo.HorizontalAlignment = HorizontalAlignment.Left;
+            header.Children.Add(logo);
+        }
+        header.Children.Add(new TextBlock { Text = title, FontSize = 32, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap });
+        if (!string.IsNullOrWhiteSpace(subtitle)) header.Children.Add(new TextBlock { Text = subtitle });
+        header.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap });
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+            header.Children.Add(new HyperlinkButton { Content = Tr("Відкрити на Modrinth"), NavigateUri = uri });
+        projectNotice = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        header.Children.Add(projectNotice);
+        hero.Children.Add(header);
+        ProjectContent.Children.Add(hero);
+        return header;
+    }
+
+    private static Image? ProjectImage(string? url, int decodeWidth) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+            ? new Image { Source = new BitmapImage(uri) { DecodePixelWidth = decodeWidth },
+                Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill } : null;
+
+    private async Task ShowProject(string id, string name, string kind, string? profile,
+        string? preferredVersion, string? author = null)
+    {
+        DiscoverStatus.Text = Tr("Завантажуємо проєкт…");
+        var details = await core.Call<ProjectDetails>(new { method = "discover", action = "project", project = id, kind });
+        var needsProfile = kind != "modpack" && profile is null;
+        var versions = needsProfile ? Array.Empty<DiscoverVersion>() : await core.Call<DiscoverVersion[]>(new
+        {
+            method = "discover", action = "versions", project = id, kind, profile
+        });
+        if (DiscoverPage.Visibility != Visibility.Visible) return;
+        var header = BeginProjectPage(name, author, details.description, details.icon, details.gallery, details.url);
+        var notice = projectNotice!;
+        var metadata = Tr("{0:N0} завантажень · {1} · Оновлено {2}", details.downloads, details.license, details.updated);
+        header.Children.Add(new TextBlock { Text = metadata, TextWrapping = TextWrapping.Wrap });
+        if (versions.Length == 0)
+        {
+            notice.Text = needsProfile ? Tr("Виберіть профіль для встановлення контенту.") : Tr("Сумісних версій немає.");
+        }
+        else
+        {
+            var picker = new ComboBox { Header = Tr("Версія"), ItemsSource = versions, DisplayMemberPath = "Label", MaxWidth = 440 };
+            picker.SelectedItem = preferredVersion is null ? versions.FirstOrDefault() : versions.FirstOrDefault(item => item.id == preferredVersion);
+            if (picker.SelectedItem is null) notice.Text = Tr("Версія за посиланням недоступна. Можна вибрати іншу.");
+            var install = new Button { Content = Tr("Встановити"), IsEnabled = picker.SelectedItem is not null };
+            picker.SelectionChanged += (_, _) => install.IsEnabled = picker.SelectedItem is not null;
+            install.Click += async (_, _) => await DiscoverAction(async () =>
             {
-                method = "discover", action = "project", project = id, kind
-            });
-            var needsProfile = kind != "modpack" && profile is null;
-            var versions = needsProfile ? Array.Empty<DiscoverVersion>() : await core.Call<DiscoverVersion[]>(new
-            {
-                method = "discover", action = "versions", project = id, kind, profile
-            });
-            var picker = new ComboBox { Header = Tr("Версія"), ItemsSource = versions, DisplayMemberPath = "Label" };
-            picker.SelectedItem = preferredVersion is null ? versions.FirstOrDefault() : versions.FirstOrDefault(version => version.id == preferredVersion);
-            var content = new StackPanel { Spacing = 10 };
-            content.Children.Add(new TextBlock { Text = details.description, TextWrapping = TextWrapping.Wrap });
-            content.Children.Add(new TextBlock
-            {
-                Text = Tr("{0:N0} завантажень · {1} · Оновлено {2}", details.downloads, details.license, details.updated),
-                TextWrapping = TextWrapping.Wrap
-            });
-            if (Uri.TryCreate(details.url, UriKind.Absolute, out var projectUri) && projectUri.Scheme == Uri.UriSchemeHttps)
-                content.Children.Add(new HyperlinkButton { Content = Tr("Відкрити на Modrinth"), NavigateUri = projectUri });
-            if (Uri.TryCreate(details.gallery, UriKind.Absolute, out var imageUri) && imageUri.Scheme == Uri.UriSchemeHttps)
-                content.Children.Add(new Image { Source = new BitmapImage(imageUri) { DecodePixelWidth = 700 }, MaxHeight = 180 });
-            if (!string.IsNullOrWhiteSpace(details.body))
-                content.Children.Add(new ScrollViewer
+                if (!install.IsEnabled || picker.SelectedItem is not DiscoverVersion version ||
+                    ProjectPage.Visibility != Visibility.Visible || projectNotice != notice) return;
+                picker.IsEnabled = install.IsEnabled = false;
+                notice.Text = Tr("Встановлюємо…");
+                try
                 {
-                    MaxHeight = 180,
-                    Content = new TextBlock { Text = details.body, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap }
-                });
-            content.Children.Add(versions.Length == 0
-                ? new TextBlock { Text = needsProfile ? Tr("Виберіть профіль для встановлення контенту.") : Tr("Сумісних версій немає.") }
-                : picker);
-            if (preferredVersion is not null && versions.Length > 0 && picker.SelectedItem is null)
-                content.Children.Add(new TextBlock { Text = Tr("Версія за посиланням недоступна. Можна вибрати іншу.") });
-            var dialog = Editor(name, new ScrollViewer { Content = content, MaxHeight = 430 }, Tr("Встановити"));
-            dialog.IsPrimaryButtonEnabled = picker.SelectedItem is not null;
-            picker.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = picker.SelectedItem is not null;
-            DiscoverStatus.Text = "";
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary ||
-                picker.SelectedItem is not DiscoverVersion version) return;
-            DiscoverStatus.Text = Tr("Встановлюємо…");
-            await core.Call<JsonElement>(new
-            {
-                method = "discover", action = "install", project = id, version = version.id, kind, profile
+                    await core.Call<JsonElement>(new { method = "discover", action = "install", project = id, version = version.id, kind, profile });
+                    loadedTab = null;
+                    notice.Text = kind == "modpack" ? Tr("Модпак додано до черги.") : Tr("Контент встановлено.");
+                }
+                finally { picker.IsEnabled = install.IsEnabled = true; }
             });
-            loadedTab = null;
-            DiscoverStatus.Text = kind == "modpack" ? Tr("Модпак додано до черги.") : Tr("Контент встановлено.");
+            header.Children.Add(picker);
+            header.Children.Add(install);
+        }
+
+        var gallery = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        foreach (var address in details.gallery_images ?? [])
+        {
+            if (ProjectImage(address, 480) is not { } image) continue;
+            image.Width = 280;
+            image.Height = 156;
+            gallery.Children.Add(image);
+        }
+        if (gallery.Children.Count > 0)
+        {
+            ProjectContent.Children.Add(new TextBlock { Text = Tr("Скриншоти"), FontSize = 20 });
+            ProjectContent.Children.Add(new ScrollViewer { Content = gallery, HorizontalScrollMode = ScrollMode.Enabled,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Disabled });
+        }
+        if (!string.IsNullOrWhiteSpace(details.body))
+        {
+            ProjectContent.Children.Add(new TextBlock { Text = Tr("Опис"), FontSize = 20 });
+            ProjectContent.Children.Add(new TextBlock { Text = details.body, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+        }
+        DiscoverStatus.Text = "";
     }
 }

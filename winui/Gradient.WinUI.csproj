@@ -16,6 +16,8 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <PackageReference Include="Velopack" Version="1.2.161" />
     <Content Include="Assets/Cover.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../swiftui/Sources/Gradient/Resources/PlayerHead.png"
+             Link="Assets/PlayerHead.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets/Launcher.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets/Launcher.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../core/apps/app/icons/apple.icon/Assets/Modrinth logo.svg"

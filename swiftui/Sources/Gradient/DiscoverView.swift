@@ -56,6 +56,8 @@ struct DiscoverView: View {
         let updated: String
         let url: URL
         let gallery: URL?
+        let gallery_images: [URL]?
+        let icon: URL?
     }
 
     @State private var query = ""
@@ -81,15 +83,40 @@ struct DiscoverView: View {
     @State private var busy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Button(action: back) {
-                    Image(systemName: "chevron.left").frame(width: 22, height: 22)
+        Group {
+            if let selected { projectPage(selected) }
+            else if let selectedServer {
+                ScrollView { serverDetails(selectedServer).padding(24) }
+            } else { catalog }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button(tr("Назад"), systemImage: "chevron.left") {
+                    if selected != nil || selectedServer != nil {
+                        selected = nil
+                        selectedServer = nil
+                        status = ""
+                    } else { back() }
                 }
-                .accessibilityLabel(Text(tr("До бібліотеки")))
-                .help(tr("До бібліотеки"))
-                Text(tr("Каталог Modrinth")).font(.title2.bold())
+                .labelStyle(.iconOnly)
             }
+        }
+        .task(id: incomingLink) {
+            if let incomingLink {
+                while busy && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(75)) }
+                guard !Task.isCancelled else { return }
+                selectedServer = nil
+                await openLink(incomingLink)
+                if self.incomingLink == incomingLink { self.incomingLink = nil }
+            } else if selected == nil && results.isEmpty && status.isEmpty {
+                await loadPage(0)
+            }
+        }
+    }
+
+    private var catalog: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(tr("Каталог Modrinth")).font(.title2.bold())
             categoryBar
             HStack {
                 TextField(tr("Знайти на Modrinth"), text: $query)
@@ -164,19 +191,6 @@ struct DiscoverView: View {
             }
         }
         .padding()
-        .sheet(item: $selectedServer, content: serverDetails)
-        .task(id: incomingLink) {
-            if let incomingLink {
-                while busy && !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(75))
-                }
-                guard !Task.isCancelled else { return }
-                await openLink(incomingLink)
-                if self.incomingLink == incomingLink { self.incomingLink = nil }
-            } else if selected == nil && results.isEmpty && status.isEmpty {
-                await loadPage(0)
-            }
-        }
         .alert(tr("Відкрити посилання Modrinth"), isPresented: $linkPrompt) {
             TextField("https://modrinth.com/modpack/…", text: $linkText)
             Button(tr("Відкрити")) {
@@ -186,55 +200,85 @@ struct DiscoverView: View {
             }
             Button(tr("Скасувати"), role: .cancel) {}
         }
-        .sheet(item: $selected) { hit in
-            VStack(alignment: .leading, spacing: 16) {
-                Text(hit.name).font(.title2.bold())
-                if let details = projectDetails {
-                    Text(details.description)
-                    Text(tr("{0} завантажень · {1} · Оновлено {2}", String(describing: details.downloads.formatted()), String(describing: details.license), String(describing: details.updated)))
-                        .font(.callout).foregroundStyle(.secondary)
-                    Link(tr("Відкрити на Modrinth"), destination: details.url)
-                    if let gallery = details.gallery, gallery.scheme == "https" {
-                        AsyncImage(url: gallery) { image in
-                            image.resizable().scaledToFit()
-                        } placeholder: {
-                            ProgressView().controlSize(.small)
+    }
+
+    private func projectPage(_ hit: ProjectSelection) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                ZStack(alignment: .bottomLeading) {
+                    if let cover = projectDetails?.gallery, cover.scheme == "https" {
+                        GeometryReader { geometry in
+                            AsyncImage(url: cover) { image in image.resizable().scaledToFill() } placeholder: { Color.clear }
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .clipped()
                         }
-                        .frame(maxHeight: 180)
-                        .accessibilityLabel(Text(tr("Зображення проєкту")))
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let icon = projectDetails?.icon, icon.scheme == "https" {
+                            AsyncImage(url: icon) { image in image.resizable().scaledToFit() } placeholder: {
+                                Image(systemName: "shippingbox")
+                            }
+                            .frame(width: 68, height: 68)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        Text(hit.name).font(.largeTitle.bold())
+                        if let details = projectDetails {
+                            Text(details.description)
+                            Text(tr("{0} завантажень · {1} · Оновлено {2}", details.downloads.formatted(), details.license, details.updated))
+                                .font(.callout).foregroundStyle(.secondary)
+                            Link(tr("Відкрити на Modrinth"), destination: details.url)
+                        }
+                        if versions.isEmpty {
+                            Text(hit.kind != "modpack" && hit.profile == nil ?
+                                 tr("Виберіть профіль для встановлення контенту.") : tr("Сумісних версій немає."))
+                        } else {
+                            Picker(tr("Версія"), selection: $version) {
+                                if version.isEmpty { Text(tr("Виберіть іншу версію")).tag("") }
+                                ForEach(versions) { entry in Text("\(entry.name) · \(entry.channel)").tag(entry.id) }
+                            }
+                            .frame(maxWidth: 340)
+                            .disabled(busy)
+                            Button(tr("Встановити")) {
+                                let chosenVersion = version
+                                Task { await install(hit, version: chosenVersion) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(busy || version.isEmpty)
+                        }
+                        if !status.isEmpty { Text(status).font(.callout) }
+                    }
+                    .padding(18)
+                    .frame(maxWidth: 440, alignment: .leading)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .padding(16)
+                }
+                .frame(minHeight: 320)
+                .background(.quaternary)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                if let details = projectDetails {
+                    let gallery = (details.gallery_images ?? []).filter { $0.scheme == "https" }
+                    if !gallery.isEmpty {
+                        Text(tr("Скриншоти")).font(.title2.bold())
+                        ScrollView(.horizontal) {
+                            HStack(spacing: 12) {
+                                ForEach(Array(gallery.enumerated()), id: \.offset) { _, url in
+                                    AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: {
+                                        Color.secondary.opacity(0.12)
+                                    }
+                                    .frame(width: 280, height: 158)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
                     }
                     if !details.body.isEmpty {
-                        ScrollView {
-                            Text(details.body)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxHeight: 180)
+                        Text(tr("Опис")).font(.title2.bold())
+                        Text(details.body).textSelection(.enabled)
                     }
-                }
-                if versions.isEmpty {
-                    Text(hit.kind != "modpack" && hit.profile == nil ?
-                         tr("Виберіть профіль для встановлення контенту.") : tr("Сумісних версій немає."))
-                } else {
-                    Picker(tr("Версія"), selection: $version) {
-                        if version.isEmpty { Text(tr("Виберіть іншу версію")).tag("") }
-                        ForEach(versions) { entry in Text("\(entry.name) · \(entry.channel)").tag(entry.id) }
-                    }
-                }
-                HStack {
-                    Spacer()
-                    Button(tr("Закрити")) { selected = nil }.keyboardShortcut(.cancelAction)
-                    Button(tr("Встановити")) {
-                        let selectedVersion = version
-                        selected = nil
-                        Task { await install(hit, version: selectedVersion) }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(version.isEmpty)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(24)
-            .frame(width: 460)
         }
     }
 
@@ -268,23 +312,30 @@ struct DiscoverView: View {
 
     private func serverDetails(_ server: Hit) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(server.name).font(.title2.bold())
+            if let icon = server.icon, icon.scheme == "https" {
+                AsyncImage(url: icon) { image in image.resizable().scaledToFit() } placeholder: {
+                    Image(systemName: "network")
+                }
+                .frame(width: 68, height: 68)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            Text(server.name).font(.largeTitle.bold())
+            if !server.author.isEmpty { Text(server.author).foregroundStyle(.secondary) }
             Text(server.description)
             if let address = server.address { Text(address).textSelection(.enabled) }
             if let url = server.url { Link(tr("Відкрити на Modrinth"), destination: url) }
             HStack {
                 Spacer()
-                Button(tr("Закрити")) { selectedServer = nil }.keyboardShortcut(.cancelAction)
                 if let address = server.address, let profileID {
                     Button(tr("Додати сервер")) {
-                        selectedServer = nil
                         Task { await saveServer(server, address: address, profile: profileID) }
                     }
+                    .disabled(busy)
                 }
             }
+            if !status.isEmpty { Text(status) }
         }
-        .padding(24)
-        .frame(width: 460)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func beginSearch() {

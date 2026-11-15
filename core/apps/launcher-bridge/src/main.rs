@@ -18,6 +18,7 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Library,
+    QuickPlay,
     CheckUpdate,
     PrepareLauncherUpdate,
     CreateProfileShortcut {
@@ -564,7 +565,8 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             let selected = minecraft_auth::get_default_user().await?;
             json!(minecraft_auth::users().await?.into_iter().map(|account| {
                 let profile = account.offline_profile;
-                json!({ "id": profile.id, "name": profile.name, "selected": selected == Some(profile.id) })
+                json!({ "id": profile.id, "name": profile.name, "selected": selected == Some(profile.id),
+                    "avatar_url": (!account.access_token.is_empty()).then(|| format!("https://mc-heads.net/avatar/{}/48", profile.id)) })
             }).collect::<Vec<_>>())
         }
         Request::UseAccount { id } => {
@@ -591,6 +593,19 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 })
             }).collect();
             json!(profiles)
+        }
+        Request::QuickPlay => {
+            let recent = Box::pin(worlds::get_recent_worlds(
+                6, worlds::DisplayStatus::Normal | worlds::DisplayStatus::Favorite
+            )).await?;
+            json!(recent.into_iter().map(|entry| {
+                let world = entry.world;
+                let (id, server) = match world.details {
+                    worlds::WorldDetails::Singleplayer { path, .. } => (path, false),
+                    worlds::WorldDetails::Server { server_id, .. } => (server_id, true),
+                };
+                json!({ "id": id, "profile": entry.instance_id, "name": world.name, "server": server })
+            }).collect::<Vec<_>>())
         }
         Request::Cover { id } => json!(
             instance::list_screenshots(&id)
@@ -659,6 +674,8 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                     "locked": item.locked,
                     "has_update": item.has_update,
                     "synced": item.synced_pack.is_some(),
+                    "pack_default": matches!(item.source_kind.map(|kind| kind.as_str()),
+                        Some("modrinth_modpack" | "imported_modpack" | "shared_instance" | "server_project")),
                     "kind": item.project_type,
                     "can_choose_version": can_choose_version,
                 })

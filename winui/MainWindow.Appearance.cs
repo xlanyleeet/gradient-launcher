@@ -10,11 +10,13 @@ namespace Gradient;
 public sealed partial class MainWindow
 {
     private InterfacePreferences appearance = InterfacePreferences.Load();
+    private int SidebarLimit => Math.Clamp(appearance.SidebarProfiles, 1, 30);
 
     private void InitializeAppearance()
     {
         ThemeSetting.SelectedIndex = appearance.Theme switch { "light" => 1, "dark" => 2, _ => 0 };
         LanguageSetting.SelectedIndex = appearance.Language == "en" ? 1 : 0;
+        SidebarLimitSetting.Value = SidebarLimit;
         Layout.ActualThemeChanged += (_, _) => ApplyPalette();
         ApplyTheme();
     }
@@ -52,7 +54,7 @@ public sealed partial class MainWindow
         if (!ready || ThemeSetting.SelectedItem is not ComboBoxItem theme ||
             LanguageSetting.SelectedItem is not ComboBoxItem language) return;
 
-        var next = new InterfacePreferences((string)theme.Tag, (string)language.Tag);
+        var next = appearance with { Theme = (string)theme.Tag, Language = (string)language.Tag };
         try
         {
             next.Save();
@@ -61,6 +63,20 @@ public sealed partial class MainWindow
             AppearanceStatus.Text = appearance.Language != InterfaceText.Language
                 ? Tr("Перезапустіть Gradient, щоб змінити мову.")
                 : "";
+        }
+        catch (Exception error) { AppearanceStatus.Text = error.Message; }
+    }
+
+    private void ChangeSidebarLimit(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!ready || double.IsNaN(args.NewValue)) return;
+        try
+        {
+            var next = appearance with { SidebarProfiles = Math.Clamp((int)args.NewValue, 1, 30) };
+            next.Save();
+            appearance = next;
+            showAllProfiles = false;
+            FilterProfiles();
         }
         catch (Exception error) { AppearanceStatus.Text = error.Message; }
     }
