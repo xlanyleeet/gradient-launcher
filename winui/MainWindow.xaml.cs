@@ -33,7 +33,8 @@ public sealed partial class MainWindow : Window
     private bool closed;
     private bool ready;
     private readonly TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private bool filteringProfiles;
+    private readonly List<NavigationViewItem> profileNavigationItems = [];
+    private (string Id, string Name, string? Icon)[] sidebarEntries = [];
 
     public MainWindow()
     {
@@ -136,15 +137,35 @@ public sealed partial class MainWindow : Window
         var filtered = ordered.Where(p => p.name.Contains(Search.Text, StringComparison.CurrentCultureIgnoreCase)).ToArray();
         LibraryCards.ItemsSource = filtered;
         var sidebar = showAllProfiles ? ordered : ordered.Take(SidebarLimit).ToArray();
-        MoreProfilesButton.Visibility = library.Length > SidebarLimit ? Visibility.Visible : Visibility.Collapsed;
-        MoreProfilesButton.Content = Tr(showAllProfiles ? "Менше" : "Більше");
-        filteringProfiles = true;
-        try
+        MoreProfilesNavigation.Visibility = library.Length > SidebarLimit ? Visibility.Visible : Visibility.Collapsed;
+        var moreLabel = Tr(showAllProfiles ? "Менше" : "Більше");
+        MoreProfilesNavigation.Content = moreLabel;
+        ToolTipService.SetToolTip(MoreProfilesNavigation, moreLabel);
+        var entries = sidebar.Select(profile => (profile.id, profile.name, profile.icon)).ToArray();
+        if (!sidebarEntries.SequenceEqual(entries))
         {
-            Profiles.ItemsSource = sidebar;
-            Profiles.SelectedItem = sidebar.FirstOrDefault(p => p.id == selectedProfileId);
+            foreach (var item in profileNavigationItems) Navigation.MenuItems.Remove(item);
+            profileNavigationItems.Clear();
+            var index = Navigation.MenuItems.IndexOf(MoreProfilesNavigation);
+            foreach (var profile in sidebar)
+            {
+                var item = new NavigationViewItem
+                {
+                    Content = profile.name,
+                    Tag = profile.id,
+                    Icon = profile.IconSource is { } image
+                        ? new ImageIcon { Source = image, Width = 26, Height = 26 }
+                        : new SymbolIcon(Symbol.Library),
+                };
+                ToolTipService.SetToolTip(item, profile.name);
+                Navigation.MenuItems.Insert(index++, item);
+                profileNavigationItems.Add(item);
+            }
+            sidebarEntries = entries;
         }
-        finally { filteringProfiles = false; }
+        if (LibraryPage.Visibility == Visibility.Visible)
+            Navigation.SelectedItem = profileNavigationItems.FirstOrDefault(item => Equals(item.Tag, selectedProfileId))
+                ?? LibraryNavigation;
     }
 
     private void SearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
@@ -271,11 +292,6 @@ public sealed partial class MainWindow : Window
         row.Children.Add(button);
     }
 
-    private async void Select(object sender, SelectionChangedEventArgs e)
-    {
-        if (!ready || filteringProfiles) return;
-        if (Profiles.SelectedItem is Profile profile) await OpenProfileDetails(profile);
-    }
     private async void Refresh(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         coverId = null;

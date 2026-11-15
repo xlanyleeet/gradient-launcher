@@ -15,6 +15,7 @@ struct GradientApp: App {
                 .preferredColorScheme(InterfacePreferences.colorScheme(for: theme))
         }
         .defaultSize(width: 1120, height: 740)
+        .windowToolbarStyle(.unified(showsTitle: false))
 
         Settings {
             LaunchSettingsView(core: core)
@@ -194,6 +195,7 @@ private struct LauncherView: View {
         } detail: {
             detailView
         }
+        .searchable(text: $search, prompt: Text(tr("Пошук профілів")))
         .task {
             while !Task.isCancelled {
                 await poll()
@@ -345,50 +347,65 @@ private struct LauncherView: View {
         return Button {
             openProfile(entry)
         } label: {
-            Label {
-                Text(entry.name)
-            } icon: {
+            Group {
                 if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
-                    Image(nsImage: image).resizable().scaledToFit().frame(width: 19, height: 19)
+                    Image(nsImage: image).resizable().scaledToFit().frame(width: 28, height: 28)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
                 } else {
-                    Image(systemName: entry.running ? "play.circle.fill" : "cube")
+                    Image(systemName: entry.running ? "play.circle.fill" : "cube").font(.title3)
                 }
             }
+            .frame(width: 40, height: 40)
+            .background(selected ? Color.accentColor.opacity(0.20) : .clear, in: RoundedRectangle(cornerRadius: 9))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(selected ? Color.accentColor.opacity(0.16) : Color.clear)
+        .help(entry.name)
+        .accessibilityLabel(Text(entry.name))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var sidebar: some View {
-        List {
-            Section {
-                Button(tr("Бібліотека"), systemImage: "square.grid.2x2", action: returnToLibrary)
-                    .buttonStyle(.plain)
-                Button(tr("Каталог Modrinth"), systemImage: "magnifyingglass") { showDiscover = true }
-                    .buttonStyle(.plain)
-            }
-            Section(tr("Профілі")) {
+        ScrollView {
+            LazyVStack(spacing: 5) {
+                sidebarAction(tr("Бібліотека"), icon: "square.grid.2x2", action: returnToLibrary)
+                sidebarAction(tr("Каталог Modrinth"), icon: "safari") { showDiscover = true }
+                Divider().padding(.horizontal, 8).padding(.vertical, 4)
                 ForEach(sidebarProfiles, content: sidebarProfileRow)
                 if profiles.count > sidebarLimit {
-                    Button(tr(showAllProfiles ? "Менше" : "Більше")) { showAllProfiles.toggle() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                    sidebarAction(tr(showAllProfiles ? "Менше" : "Більше"),
+                                  icon: showAllProfiles ? "chevron.up" : "ellipsis") { showAllProfiles.toggle() }
                 }
-            }
-            Section {
-                Menu(tr("Додати профіль")) {
+                Divider().padding(.horizontal, 8).padding(.vertical, 4)
+                Menu {
                     Button(tr("Новий профіль"), action: beginCreateProfile)
                     Button(tr("Імпортувати .mrpack"), action: importPack)
                     Button(tr("Імпорт з лаунчера")) { transfer = .importLauncher }
+                } label: {
+                    Image(systemName: "plus").font(.title3).frame(width: 36, height: 36)
                 }
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(tr("Додати профіль"))
+                .accessibilityLabel(Text(tr("Додати профіль")))
             }
+            .padding(.vertical, 8)
         }
-        .navigationSplitViewColumnWidth(min: 218, ideal: 218, max: 218)
-        .searchable(text: $search, placement: .sidebar, prompt: Text(tr("Пошук профілів")))
+        .navigationSplitViewColumnWidth(min: 64, ideal: 64, max: 64)
         .safeAreaInset(edge: .bottom) {
             accountMenu
         }
+    }
+
+    private func sidebarAction(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.title3).frame(width: 40, height: 38)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(Text(title))
     }
 
     @ViewBuilder private var detailView: some View {
@@ -859,7 +876,12 @@ private struct LauncherView: View {
 
     private var accountMenu: some View {
         let active = accounts.first(where: \.selected)
+        let accountName = active?.name ?? tr("Акаунти Minecraft")
         return Menu {
+            if let active {
+                Text(active.name)
+                Divider()
+            }
             Button(tr("Керувати акаунтами"), systemImage: "person.2", action: showAccounts)
             Button(tr("Скін Minecraft"), systemImage: "person.crop.square") { skinSettings = true }
                 .disabled(active == nil)
@@ -867,27 +889,19 @@ private struct LauncherView: View {
             Button(tr("Увійти в Microsoft"), systemImage: "person.crop.circle", action: beginMicrosoft)
             Button(tr("Додати офлайн-акаунт"), systemImage: "person.badge.plus") { showLogin = true }
         } label: {
-            HStack(spacing: 9) {
-                ZStack {
-                    Circle().fill(Color.accentColor.opacity(0.18))
-                    AsyncImage(url: active?.avatar_url) { image in
-                        image.resizable().interpolation(.none).scaledToFit()
-                    } placeholder: {
-                        defaultAccountHead
-                    }
-                }
-                .frame(width: 30, height: 30)
-                .foregroundStyle(Color.accentColor)
-                Text(active?.name ?? tr("Акаунти Minecraft"))
-                    .font(.callout.weight(.semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+            AsyncImage(url: active?.avatar_url) { image in
+                image.resizable().interpolation(.none).scaledToFit()
+            } placeholder: {
+                defaultAccountHead
             }
-            .contentShape(Rectangle())
+            .frame(width: 30, height: 30)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .padding(.horizontal, 12)
+        .fixedSize()
+        .help(accountName)
+        .accessibilityLabel(Text(accountName))
         .padding(.vertical, 8)
     }
 
