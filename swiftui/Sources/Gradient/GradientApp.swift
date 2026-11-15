@@ -23,7 +23,7 @@ struct GradientApp: App {
     }
 }
 
-private struct Profile: Decodable, Identifiable {
+private struct Profile: Decodable, Identifiable, Equatable {
     let id: String
     let name: String
     let version: String
@@ -34,7 +34,7 @@ private struct Profile: Decodable, Identifiable {
     let icon: String?
 }
 
-private struct Account: Decodable, Identifiable {
+private struct Account: Decodable, Identifiable, Equatable {
     let id: String
     let name: String
     let selected: Bool
@@ -59,7 +59,7 @@ private enum LibrarySheet: String, Identifiable {
     var id: String { rawValue }
 }
 
-private struct Job: Decodable, Identifiable {
+private struct Job: Decodable, Identifiable, Equatable {
     let job_id: String
     let instance_id: String?
     let status: String
@@ -151,6 +151,7 @@ private struct LauncherView: View {
     @State private var logWasRunning = false
     @State private var status = ""
     @State private var busy = false
+    @State private var actionRevision = 0
     @State private var tab = ProfileTab.content
     @State private var loadedTab: String?
     @State private var content: [ContentEntry] = []
@@ -195,7 +196,7 @@ private struct LauncherView: View {
         }
         .task {
             while !Task.isCancelled {
-                if !(await core.isSuspendedForUpdate) { await perform(refresh) }
+                await poll()
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }
@@ -242,7 +243,7 @@ private struct LauncherView: View {
                     do {
                         _ = try await core.call("play", ["id": entry.id], as: EmptyReply.self)
                         status = ""
-                        await perform(refresh)
+                        await perform { try await refresh() }
                     } catch { status = error.localizedDescription }
                 }
             }
@@ -257,7 +258,7 @@ private struct LauncherView: View {
                     do {
                         _ = try await core.call("import", ["path": url.path], as: EmptyReply.self)
                         status = tr("Модпак додано до черги.")
-                        await perform(refresh)
+                        await perform { try await refresh() }
                     } catch { status = error.localizedDescription }
                 }
             }
@@ -438,7 +439,7 @@ private struct LauncherView: View {
                     loadedTab = nil
                     logProfile = nil
                     fileRefresh += 1
-                    Task { await perform(refresh) }
+                    Task { await perform { try await refresh() } }
                 }
             }
         }
@@ -992,11 +993,24 @@ private struct LauncherView: View {
             .disabled(busy)
     }
 
-    @MainActor private func refresh() async throws {
-        profiles = try await core.call("library", as: [Profile].self)
+    @MainActor private func poll() async {
+        guard !(await core.isSuspendedForUpdate), !busy else { return }
+        let revision = actionRevision
+        do { try await refresh(pollRevision: revision) }
+        catch {
+            if actionRevision == revision && !Task.isCancelled { status = error.localizedDescription }
+        }
+    }
+
+    @MainActor private func refresh(pollRevision: Int? = nil) async throws {
+        let nextProfiles = try await core.call("library", as: [Profile].self)
+        let nextJobs = try await core.call("queue", as: [Job].self)
+        let nextAccounts = try await core.call("accounts", as: [Account].self)
+        guard !Task.isCancelled, pollRevision == nil || pollRevision == actionRevision else { return }
+        if profiles != nextProfiles { profiles = nextProfiles }
         if selectedID != nil && profile == nil { returnToLibrary(); selectedID = nil }
-        jobs = try await core.call("queue", as: [Job].self)
-        accounts = try await core.call("accounts", as: [Account].self)
+        if jobs != nextJobs { jobs = nextJobs }
+        if accounts != nextAccounts { accounts = nextAccounts }
         try await loadSelection()
     }
 
@@ -1076,6 +1090,7 @@ private struct LauncherView: View {
 
     @MainActor private func perform(_ action: () async throws -> Void) async {
         guard !busy else { return }
+        actionRevision += 1
         busy = true
         defer { busy = false }
         do { try await action() } catch { status = error.localizedDescription }
