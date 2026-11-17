@@ -677,13 +677,9 @@ async fn add_and_equip_custom_skin_now(
         .await?;
     }
 
-    if let Err(error) = sync_cape(selected_credentials, &profile, cape_id).await
-    {
-        refresh_profile_cache(selected_credentials).await;
-        return Err(error);
-    }
-
-    Ok(())
+    let result = sync_cape(selected_credentials, &profile, cape_id).await;
+    refresh_profile_cache(selected_credentials).await;
+    result
 }
 
 /// Equips the given skin for the currently selected Minecraft profile, then applies its cape.
@@ -1006,12 +1002,9 @@ async fn unequip_skin_now(
     mojang_api::MinecraftSkinOperation::unequip_any(selected_credentials)
         .await?;
 
-    if let Err(error) = sync_cape(selected_credentials, &profile, None).await {
-        refresh_profile_cache(selected_credentials).await;
-        return Err(error);
-    }
-
-    Ok(())
+    let result = sync_cape(selected_credentials, &profile, None).await;
+    refresh_profile_cache(selected_credentials).await;
+    result
 }
 
 /// Normalizes the texture of a Minecraft skin to the modern 64x64 format, handling

@@ -66,21 +66,67 @@ public sealed partial class MainWindow
             await ApplyProfileChange(new { method = "play", id = target.id });
     }, waitForCore: true);
 
+    private sealed record SkinPreview(string preview, string variant);
+
     private async void ManageSkin(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         var model = new ComboBox { Header = Tr("Модель"), ItemsSource = new[] { Tr("Класична"), Tr("Тонкі руки") }, SelectedIndex = 0 };
-        var dialog = Editor(Tr("Скін активного Minecraft-акаунта"), model, Tr("Вибрати PNG"));
+        var image = new Image { Width = 92, Height = 184, HorizontalAlignment = HorizontalAlignment.Center };
+        var notice = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        var choose = new Button { Content = Tr("Вибрати PNG") };
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(image);
+        panel.Children.Add(model);
+        panel.Children.Add(choose);
+        panel.Children.Add(notice);
+        var dialog = Editor(Tr("Скін активного Minecraft-акаунта"), panel, Tr("Застосувати"));
         dialog.SecondaryButtonText = Tr("Скинути скін і плащ");
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
+        dialog.IsPrimaryButtonEnabled = false;
+        string? path = null;
+        string Variant() => model.SelectedIndex == 1 ? "slim" : "classic";
+
+        async Task LoadDraft()
+        {
+            if (path is null) return;
+            dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = model.IsEnabled = choose.IsEnabled = false;
+            try
+            {
+                var draft = await core.Call<SkinPreview>(new { method = "preview_skin", path, variant = Variant() });
+                await SetSkinPreview(image, draft);
+                notice.Text = Path.GetFileName(path);
+                dialog.IsPrimaryButtonEnabled = true;
+            }
+            catch (Exception error) { image.Source = null; notice.Text = error.Message; }
+            finally { dialog.IsSecondaryButtonEnabled = model.IsEnabled = choose.IsEnabled = true; }
+        }
+
+        try
+        {
+            var active = await core.Call<SkinPreview?>(new { method = "current_skin_preview" });
+            if (active is not null)
+            {
+                model.SelectedIndex = active.variant == "slim" ? 1 : 0;
+                await SetSkinPreview(image, active);
+            }
+        }
+        catch (Exception error) { notice.Text = error.Message; }
+
+        model.SelectionChanged += async (_, _) => await LoadDraft();
+        choose.Click += async (_, _) =>
         {
             var picker = new FileOpenPicker();
             picker.FileTypeFilter.Add(".png");
             InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
             var file = await picker.PickSingleFileAsync();
             if (file is null) return;
-            await core.Call<JsonElement>(new { method = "upload_skin", path = file.Path,
-                variant = model.SelectedIndex == 1 ? "slim" : "classic" });
+            path = file.Path;
+            await LoadDraft();
+        };
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary && path is not null)
+        {
+            await core.Call<JsonElement>(new { method = "upload_skin", path, variant = Variant() });
+            await RefreshAccountAvatar();
             Status.Text = Tr("Скін Minecraft застосовано.");
         }
         else if (result == ContentDialogResult.Secondary)
@@ -89,9 +135,23 @@ public sealed partial class MainWindow
             confirm.DefaultButton = ContentDialogButton.Close;
             if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
             await core.Call<JsonElement>(new { method = "reset_skin" });
+            await RefreshAccountAvatar();
             Status.Text = Tr("Скін Minecraft скинуто.");
         }
     }, waitForCore: true);
+
+    private static async Task SetSkinPreview(Image image, SkinPreview preview)
+    {
+        using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+        using var writer = new Windows.Storage.Streams.DataWriter(stream);
+        writer.WriteBytes(Convert.FromBase64String(preview.preview));
+        await writer.StoreAsync();
+        writer.DetachStream();
+        stream.Seek(0);
+        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+        await bitmap.SetSourceAsync(stream);
+        image.Source = bitmap;
+    }
 
     private async void OpenProfileFolder(object sender, RoutedEventArgs e) => await Run(async () =>
     {

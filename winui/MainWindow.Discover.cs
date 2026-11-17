@@ -37,7 +37,7 @@ public sealed partial class MainWindow
         SettingsPage.Visibility = Visibility.Collapsed;
         LibraryPage.Visibility = Visibility.Collapsed;
         LibraryHome.Visibility = Visibility.Collapsed;
-        WindowTitleBar.IsBackButtonVisible = true;
+        BackButton.Visibility = Visibility.Visible;
         DiscoverPage.Visibility = Visibility.Visible;
         Navigation.SelectedItem = DiscoverNavigation;
         DiscoverQuery.Focus(FocusState.Programmatic);

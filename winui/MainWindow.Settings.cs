@@ -157,7 +157,7 @@ public sealed partial class MainWindow
         LibraryPage.Visibility = Visibility.Collapsed;
         LibraryHome.Visibility = Visibility.Collapsed;
         ProjectPage.Visibility = Visibility.Collapsed;
-        WindowTitleBar.IsBackButtonVisible = true;
+        BackButton.Visibility = Visibility.Visible;
         DiscoverPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
         Navigation.SelectedItem = SettingsNavigation;

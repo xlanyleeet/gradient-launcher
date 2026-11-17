@@ -5,9 +5,21 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <TitleBar x:Name="WindowTitleBar"
-                  BackRequested="BackToLibrary" IsBackButtonEnabled="True"
-                  IsPaneToggleButtonVisible="True" PaneToggleRequested="ToggleNavigationPane">
+        <TitleBar x:Name="WindowTitleBar">
+            <TitleBar.LeftHeader>
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                    <Button Width="40" Height="36" Background="Transparent" BorderThickness="0"
+                            AutomationProperties.Name="{local:Translate Key='Бічне меню'}"
+                            ToolTipService.ToolTip="{local:Translate Key='Бічне меню'}" Click="ToggleNavigationPane">
+                        <FontIcon Glyph="&#xE700;" FontSize="15"/>
+                    </Button>
+                    <Button x:Name="BackButton" Width="40" Height="36" Background="Transparent" BorderThickness="0"
+                            Visibility="Collapsed" AutomationProperties.Name="{local:Translate Key='Назад'}"
+                            ToolTipService.ToolTip="{local:Translate Key='Назад'}" Click="BackToLibrary">
+                        <SymbolIcon Symbol="Back"/>
+                    </Button>
+                </StackPanel>
+            </TitleBar.LeftHeader>
             <TitleBar.IconSource>
                 <BitmapIconSource UriSource="ms-appx:///Assets/Launcher.png" ShowAsMonochrome="False"/>
             </TitleBar.IconSource>

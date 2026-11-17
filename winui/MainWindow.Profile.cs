@@ -41,7 +41,10 @@ public sealed partial class MainWindow
         {
             if (content)
             {
-                var entries = await core.Call<ContentEntry[]>(new { method = "content", id = profile.id });
+                var entries = await core.Call<ContentEntry[]>(new
+                {
+                    method = "content", id = profile.id, include_pack = ShowPackContent.IsChecked == true
+                });
                 if (SelectedProfile?.id != profile.id || !Equals(Details.SelectedItem, ContentTab)) return;
                 panel.Children.Clear();
                 foreach (var entry in entries.Where(entry => !entry.pack_default || ShowPackContent.IsChecked == true))

@@ -8,7 +8,7 @@ namespace Gradient;
 
 public sealed partial class MainWindow
 {
-    private void ToggleNavigationPane(TitleBar sender, object args) =>
+    private void ToggleNavigationPane(object sender, RoutedEventArgs args) =>
         Navigation.IsPaneOpen = !Navigation.IsPaneOpen;
 
     private void ExpandAccount(NavigationView sender, object args) =>
@@ -94,12 +94,12 @@ public sealed partial class MainWindow
         selectedProfileId = id;
         SettingsPage.Visibility = DiscoverPage.Visibility = LibraryHome.Visibility = ProjectPage.Visibility = Visibility.Collapsed;
         LibraryPage.Visibility = Visibility.Visible;
-        WindowTitleBar.IsBackButtonVisible = true;
+        BackButton.Visibility = Visibility.Visible;
         if (changed) Details.SelectedItem = ContentTab;
         FilterProfiles();
     }
 
-    private async void BackToLibrary(TitleBar sender, object args)
+    private async void BackToLibrary(object sender, RoutedEventArgs args)
     {
         if (ProjectPage.Visibility == Visibility.Visible)
         {
@@ -122,7 +122,7 @@ public sealed partial class MainWindow
         ProjectPage.Visibility = Visibility.Collapsed;
         LibraryPage.Visibility = Visibility.Collapsed;
         LibraryHome.Visibility = Visibility.Visible;
-        WindowTitleBar.IsBackButtonVisible = false;
+        BackButton.Visibility = Visibility.Collapsed;
         Navigation.SelectedItem = LibraryNavigation;
     }
 }

@@ -10,6 +10,7 @@ use theseus::{
 };
 
 mod discover;
+mod skin;
 mod updates;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -31,6 +32,8 @@ enum Request {
         path: PathBuf,
         variant: SkinVariant,
     },
+    CurrentSkinPreview,
+    PreviewSkin { path: PathBuf, variant: SkinVariant },
     ResetSkin,
     JobDiagnostics {
         id: uuid::Uuid,
@@ -177,6 +180,8 @@ enum Request {
     },
     Content {
         id: String,
+        #[serde(default)]
+        include_pack: bool,
     },
     AddMod {
         id: String,
@@ -362,17 +367,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             json!({ "id": profile.instance.id, "name": profile.instance.name, "quarantined": profile.quarantined })
         }
         Request::UploadSkin { path, variant } => {
-            use std::io::Read;
-            const LIMIT: u64 = 1024 * 1024;
-            let file = std::fs::File::open(&path)?;
-            if !file.metadata()?.is_file() {
-                return Err("Виберіть PNG-файл скіна.".into());
-            }
-            let mut bytes = Vec::new();
-            file.take(LIMIT + 1).read_to_end(&mut bytes)?;
-            if bytes.len() as u64 > LIMIT || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-                return Err("Виберіть PNG-файл скіна розміром до 1 МіБ.".into());
-            }
+            let bytes = skin::read_texture(&path)?;
             let variant = match variant {
                 SkinVariant::Classic => theseus::minecraft_skins::MinecraftSkinVariant::Classic,
                 SkinVariant::Slim => theseus::minecraft_skins::MinecraftSkinVariant::Slim,
@@ -383,6 +378,9 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             Box::pin(theseus::minecraft_skins::flush_pending_skin_change()).await?;
             Value::Null
         }
+        Request::CurrentSkinPreview => Box::pin(skin::current_preview()).await?,
+        Request::PreviewSkin { path, variant } =>
+            skin::preview(&skin::read_texture(&path)?, matches!(variant, SkinVariant::Slim))?,
         Request::ResetSkin => {
             Box::pin(theseus::minecraft_skins::unequip_skin()).await?;
             Box::pin(theseus::minecraft_skins::flush_pending_skin_change()).await?;
@@ -653,9 +651,26 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             }
             json!(logs::get_output_by_filename(&id, kind, &filename).await?)
         }
-        Request::Content { id } => {
+        Request::Content { id, include_pack } => {
             instance::sync_content_files(&id).await?;
             let mut items = instance::get_content_items(&id, None).await?;
+            let linked = if include_pack {
+                Box::pin(instance::get_linked_modpack_content(&id, None)).await?
+            } else {
+                Vec::new()
+            };
+            for mut item in linked {
+                let installed = items.iter_mut().find(|installed| installed.id == item.id
+                    || installed.project.as_ref().zip(item.project.as_ref()).is_some_and(|(a, b)| a.id == b.id)
+                    && installed.version.as_ref().zip(item.version.as_ref()).is_some_and(|(a, b)| a.id == b.id));
+                if let Some(installed) = installed {
+                    installed.source_kind = item.source_kind.or(installed.source_kind);
+                } else {
+                    item.locked = true;
+                    item.file_path.clear();
+                    items.push(item);
+                }
+            }
             items.sort_by_cached_key(|item| item.file_name.to_lowercase());
             json!(items.into_iter().map(|item| {
                 let can_choose_version = item.project_type == theseus::data::ProjectType::Mod
@@ -666,6 +681,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 let version = item.version.map(|version| version.version_number)
                     .or_else(|| item.embedded_metadata.and_then(|meta| meta.version));
                 json!({
+                    "entry_id": item.id,
                     "path": item.file_path,
                     "name": name,
                     "file": item.file_name,
@@ -674,7 +690,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                     "locked": item.locked,
                     "has_update": item.has_update,
                     "synced": item.synced_pack.is_some(),
-                    "pack_default": matches!(item.source_kind.map(|kind| kind.as_str()),
+                    "pack_default": item.file_path.is_empty() || matches!(item.source_kind.map(|kind| kind.as_str()),
                         Some("modrinth_modpack" | "imported_modpack" | "shared_instance" | "server_project")),
                     "kind": item.project_type,
                     "can_choose_version": can_choose_version,

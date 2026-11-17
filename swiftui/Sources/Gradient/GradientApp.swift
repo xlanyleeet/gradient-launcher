@@ -84,6 +84,7 @@ private enum ProfileTab: String, CaseIterable {
 }
 
 private struct ContentEntry: Decodable, Identifiable {
+    let entry_id: String?
     let path: String
     let name: String
     let file: String
@@ -95,7 +96,13 @@ private struct ContentEntry: Decodable, Identifiable {
     let has_update: Bool
     let can_choose_version: Bool
     let pack_default: Bool?
-    var id: String { path }
+    var id: String { path.isEmpty ? entry_id ?? file : path }
+}
+
+private struct ContentRequest: Encodable {
+    let method = "content"
+    let id: String
+    let include_pack: Bool
 }
 
 private struct WorldEntry: Decodable, Identifiable {
@@ -225,6 +232,9 @@ private struct LauncherView: View {
         }
         .onChange(of: sidebarLimit) { showAllProfiles = false }
         .onChange(of: tab) {
+            Task { await perform(loadSelection) }
+        }
+        .onChange(of: showPackContent) {
             Task { await perform(loadSelection) }
         }
         .onChange(of: selectedLog) {
@@ -557,7 +567,7 @@ private struct LauncherView: View {
     }
 
     private func tabKey(_ profile: Profile, _ tab: ProfileTab) -> String {
-        "\(profile.id)/\(profile.running)/\(profile.quarantined)/\(tab)"
+        "\(profile.id)/\(profile.running)/\(profile.quarantined)/\(tab)/\(tab == .content && showPackContent)"
     }
 
     @ViewBuilder private var tabContent: some View {
@@ -1050,8 +1060,10 @@ private struct LauncherView: View {
         let key = tabKey(profile, requestedTab)
         switch requestedTab {
         case .content where key != loadedTab:
-            let entries = try await core.call("content", ["id": profile.id], as: [ContentEntry].self)
-            guard selectedID == profile.id, tab == requestedTab else { return }
+            let request = ContentRequest(id: profile.id, include_pack: showPackContent)
+            let entries = try await core.send(request, as: [ContentEntry].self)
+            guard selectedID == profile.id, tab == requestedTab,
+                  request.include_pack == showPackContent else { return }
             content = entries
             loadedTab = key
         case .worlds where key != loadedTab:
