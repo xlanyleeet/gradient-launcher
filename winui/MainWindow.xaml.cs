@@ -40,10 +40,10 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         InitializeAppearance();
-        Layout.SizeChanged += (_, args) => Search.Width = Math.Clamp(args.NewSize.Width - 400, 120, 760);
         Status.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) => LibraryStatus.Text = Status.Text);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
+        Layout.SizeChanged += (_, _) => ResizeTitleBarSearch();
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Launcher.ico"));
         Navigation.SelectedItem = LibraryNavigation;
         ready = true;
@@ -60,6 +60,10 @@ public sealed partial class MainWindow : Window
     private async void Start(object sender, RoutedEventArgs e)
     {
         Layout.Loaded -= Start;
+        var root = Layout.XamlRoot;
+        root.Changed += TitleBarRootChanged;
+        Closed += (_, _) => root.Changed -= TitleBarRootChanged;
+        ResizeTitleBarSearch();
         await Run(RefreshAccountAvatar);
         await Run(Update);
         await Run(LoadQuickPlay);

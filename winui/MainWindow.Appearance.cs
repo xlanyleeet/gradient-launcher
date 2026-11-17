@@ -12,6 +12,17 @@ public sealed partial class MainWindow
     private InterfacePreferences appearance = InterfacePreferences.Load();
     private int SidebarLimit => Math.Clamp(appearance.SidebarProfiles, 1, 30);
 
+    private void TitleBarRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ResizeTitleBarSearch();
+
+    private void ResizeTitleBarSearch()
+    {
+        if (Layout.XamlRoot is not { } root) return;
+        var captionInset = (AppWindow.TitleBar.LeftInset + AppWindow.TitleBar.RightInset) / root.RasterizationScale;
+        // Leave room for the menu, back button, app icon, account and window drag area.
+        var available = Layout.ActualWidth - captionInset - 240;
+        Search.Width = Math.Clamp(available * 0.70, 0, 760);
+    }
+
     private void InitializeAppearance()
     {
         ThemeSetting.SelectedIndex = appearance.Theme switch { "light" => 1, "dark" => 2, _ => 0 };
@@ -36,14 +47,13 @@ public sealed partial class MainWindow
     {
         var dark = Layout.ActualTheme == ElementTheme.Dark;
         var surface = dark ? Color.FromArgb(255, 23, 46, 50) : Color.FromArgb(255, 168, 222, 215);
-        var title = dark ? Color.FromArgb(255, 20, 31, 39) : Color.FromArgb(255, 224, 242, 240);
-        var navigation = dark ? Color.FromArgb(255, 25, 38, 44) : Color.FromArgb(255, 209, 234, 231);
+        var chrome = dark ? Color.FromArgb(255, 20, 31, 39) : Color.FromArgb(255, 224, 242, 240);
         if (new AccessibilitySettings().HighContrast)
-            surface = title = navigation = new UISettings().GetColorValue(UIColorType.Background);
+            surface = chrome = new UISettings().GetColorValue(UIColorType.Background);
 
         Layout.Background = LibrarySurface.Background = new SolidColorBrush(surface);
-        WindowTitleBar.Background = new SolidColorBrush(title);
-        Navigation.Background = new SolidColorBrush(navigation);
+        WindowTitleBar.Background = Navigation.Background = new SolidColorBrush(chrome);
+        OverlayPaneBrush.Color = ExpandedPaneBrush.Color = chrome;
         CoverClear.Color = Color.FromArgb(0, surface.R, surface.G, surface.B);
         CoverFade.Color = Color.FromArgb(179, surface.R, surface.G, surface.B);
         CoverSolid.Color = surface;

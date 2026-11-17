@@ -1,5 +1,10 @@
 {
   "english": {
+    "Що нового": "What's new",
+    "Бібліотека відкривається з картками профілів і швидким доступом до світів та серверів.": "The library opens with profile cards and quick access to worlds and servers.",
+    "Проєкти Modrinth відкриваються в головному вікні з описом, скриншотами та встановленням.": "Modrinth projects open in the main window with descriptions, screenshots, and an install action.",
+    "Скіни Minecraft можна переглянути перед застосуванням.": "You can preview Minecraft skins before applying them.",
+    "Релізи на GitHub": "GitHub releases",
     "Бічне меню": "Sidebar menu",
     "Передперегляд скіна": "Skin preview",
     "Назад": "Back",

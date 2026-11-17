@@ -11,12 +11,6 @@ public sealed partial class MainWindow
     private void ToggleNavigationPane(object sender, RoutedEventArgs args) =>
         Navigation.IsPaneOpen = !Navigation.IsPaneOpen;
 
-    private void ExpandAccount(NavigationView sender, object args) =>
-        AccountNickname.Visibility = Visibility.Visible;
-
-    private void CollapseAccount(NavigationView sender, NavigationViewPaneClosingEventArgs args) =>
-        AccountNickname.Visibility = Visibility.Collapsed;
-
     private bool showAllProfiles;
     public sealed record QuickEntry(string id, string profile, string name, bool server, string ProfileLabel = "");
 
@@ -62,6 +56,8 @@ public sealed partial class MainWindow
             await OpenDiscover();
         else if (Equals(args.InvokedItemContainer, SettingsNavigation))
             await OpenSettings();
+        else if (Equals(args.InvokedItemContainer, WhatsNewNavigation))
+            await ShowWhatsNew();
         else if (Equals(args.InvokedItemContainer, AddProfileNavigation))
             FlyoutBase.ShowAttachedFlyout(AddProfileNavigation);
         else if (Equals(args.InvokedItemContainer, MoreProfilesNavigation))
@@ -74,6 +70,30 @@ public sealed partial class MainWindow
             ShowLibrary();
             await Run(LoadQuickPlay, waitForCore: true);
         }
+    }
+
+    private async Task ShowWhatsNew()
+    {
+        var notes = new StackPanel { Spacing = 10, MaxWidth = 440 };
+        foreach (var text in new[]
+        {
+            Tr("Бібліотека відкривається з картками профілів і швидким доступом до світів та серверів."),
+            Tr("Проєкти Modrinth відкриваються в головному вікні з описом, скриншотами та встановленням."),
+            Tr("Скіни Minecraft можна переглянути перед застосуванням."),
+        })
+            notes.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap });
+        notes.Children.Add(new HyperlinkButton
+        {
+            Content = Tr("Релізи на GitHub"),
+            NavigateUri = new Uri("https://github.com/xlanyleeet/gradient-launcher/releases")
+        });
+        await new ContentDialog
+        {
+            XamlRoot = Layout.XamlRoot,
+            Title = Tr("Що нового"),
+            Content = notes,
+            CloseButtonText = Tr("Закрити"),
+        }.ShowAsync();
     }
 
     private async void OpenLibraryProfile(object sender, ItemClickEventArgs args)

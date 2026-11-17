@@ -250,7 +250,6 @@ public sealed partial class MainWindow
     {
         var accounts = await core.Call<Account[]>(new { method = "accounts" });
         var active = accounts.FirstOrDefault(account => account.selected);
-        AccountNickname.Text = active?.name ?? Tr("Акаунти Minecraft");
         AccountAvatar.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
             Uri.TryCreate(active?.avatar_url, UriKind.Absolute, out var avatar) && avatar.Scheme == Uri.UriSchemeHttps
                 ? avatar : DefaultAccountAvatar);
