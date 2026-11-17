@@ -50,6 +50,23 @@ struct LaunchSettingsView: View {
     }
 
     var body: some View {
+        TabView {
+            Tab(LocalizedStringKey(tr("Вигляд і мова")), systemImage: "paintbrush") {
+                appearanceSettings
+            }
+            Tab(LocalizedStringKey(tr("Запуск")), systemImage: "play.circle") {
+                gameSettings
+            }
+            Tab(LocalizedStringKey(tr("Оновлення Gradient")), systemImage: "arrow.down.circle") {
+                updateSettings
+            }
+        }
+        .frame(width: 560, height: 480)
+        .task { if !loaded { await load() } }
+        .sheet(isPresented: $showJava) { JavaRuntimesView(core: core) }
+    }
+
+    private var appearanceSettings: some View {
         Form {
             Section(tr("Вигляд і мова")) {
                 Stepper("\(tr("Профілів у бічній панелі")) · \(sidebarLimit)", value: $sidebarLimit, in: 1...30)
@@ -67,30 +84,20 @@ struct LaunchSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("Java") {
-                Button(tr("Інсталяції Java…")) { showJava = true }
-            }
-            Section(tr("Оновлення Gradient")) {
-                Button(tr("Перевірити оновлення")) { Task { await checkForUpdate() } }
-                    .disabled(checkingUpdate)
-                if checkingUpdate {
-                    ProgressView(tr("Перевіряємо оновлення…")).controlSize(.small)
-                } else if let updateInfo {
-                    Text(tr("Встановлено {0}.", String(describing: updateInfo.installed)))
-                    if let release = updateInfo.available {
-                        Link(tr("Завантажити {0}", String(describing: release.version)), destination: release.download_url)
-                    } else {
-                        Text(tr("Новішого релізу для цієї платформи немає."))
-                    }
-                } else if let updateError {
-                    Text(updateError)
-                }
-            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var gameSettings: some View {
+        Form {
             Section(tr("Пам’ять і вікно гри")) {
                 TextField(tr("Максимум пам’яті (МіБ)"), text: $memory)
                 Toggle(tr("На весь екран"), isOn: $fullscreen)
                 TextField(tr("Ширина (пкс)"), text: $width)
                 TextField(tr("Висота (пкс)"), text: $height)
+            }
+            Section("Java") {
+                Button(tr("Інсталяції Java…")) { showJava = true }
             }
             Section(tr("Аргументи JVM")) {
                 TextEditor(text: $arguments)
@@ -109,9 +116,28 @@ struct LaunchSettingsView: View {
             if !status.isEmpty { Text(status) }
         }
         .formStyle(.grouped)
-        .frame(width: 480)
-        .task { await load() }
-        .sheet(isPresented: $showJava) { JavaRuntimesView(core: core) }
+    }
+
+    private var updateSettings: some View {
+        Form {
+            Section(tr("Оновлення Gradient")) {
+                Button(tr("Перевірити оновлення")) { Task { await checkForUpdate() } }
+                    .disabled(checkingUpdate)
+                if checkingUpdate {
+                    ProgressView(tr("Перевіряємо оновлення…")).controlSize(.small)
+                } else if let updateInfo {
+                    Text(tr("Встановлено {0}.", String(describing: updateInfo.installed)))
+                    if let release = updateInfo.available {
+                        Link(tr("Завантажити {0}", String(describing: release.version)), destination: release.download_url)
+                    } else {
+                        Text(tr("Новішого релізу для цієї платформи немає."))
+                    }
+                } else if let updateError {
+                    Text(updateError)
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
 
     @MainActor private func checkForUpdate() async {

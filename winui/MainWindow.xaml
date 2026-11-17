@@ -235,39 +235,79 @@
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-                    <StackPanel Padding="30" Spacing="16" HorizontalAlignment="Left" MaxWidth="680">
-                        <Button Content="{local:Translate Key='До бібліотеки'}" Click="CloseSettings"/>
-                        <TextBlock Text="{local:Translate Key='Вигляд і мова'}" Style="{StaticResource TitleTextBlockStyle}"/>
-                        <ComboBox x:Name="ThemeSetting" Header="{local:Translate Key='Тема'}" SelectionChanged="ChangeAppearance">
-                            <ComboBoxItem Content="{local:Translate Key='Системна'}" Tag="system"/>
-                            <ComboBoxItem Content="{local:Translate Key='Світла'}" Tag="light"/>
-                            <ComboBoxItem Content="{local:Translate Key='Темна'}" Tag="dark"/>
-                        </ComboBox>
-                        <ComboBox x:Name="LanguageSetting" Header="{local:Translate Key='Мова'}" SelectionChanged="ChangeAppearance">
-                            <ComboBoxItem Content="Українська" Tag="uk"/>
-                            <ComboBoxItem Content="English" Tag="en"/>
-                        </ComboBox>
-                        <NumberBox x:Name="SidebarLimitSetting" Header="{local:Translate Key='Профілів у бічній панелі'}"
-                                   Minimum="1" Maximum="30" SpinButtonPlacementMode="Inline" ValueChanged="ChangeSidebarLimit"/>
-                        <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                        <TextBlock Text="{local:Translate Key='Налаштування запуску'}" Style="{StaticResource TitleTextBlockStyle}"/>
-                        <TextBox x:Name="MemorySetting" Header="{local:Translate Key='Максимум пам’яті (МіБ)'}" InputScope="Number"/>
-                        <ToggleSwitch x:Name="FullscreenSetting" Header="{local:Translate Key='На весь екран'}"
-                                      OnContent="{local:Translate Key='Увімкнено'}" OffContent="{local:Translate Key='Вимкнено'}"/>
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <TextBox x:Name="WidthSetting" Header="{local:Translate Key='Ширина (пкс)'}" InputScope="Number" MinWidth="140"/>
-                            <TextBox x:Name="HeightSetting" Header="{local:Translate Key='Висота (пкс)'}" InputScope="Number" MinWidth="140"/>
-                        </StackPanel>
-                        <TextBox x:Name="ArgumentsSetting" Header="{local:Translate Key='Аргументи JVM · один на рядок'}" AcceptsReturn="True"
-                                 FontFamily="Consolas" TextWrapping="Wrap" MinHeight="96"/>
-                        <Button x:Name="SaveSettingsButton" Content="{local:Translate Key='Зберегти'}" Click="SaveSettings"/>
-                        <TextBlock x:Name="SettingsStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                        <Button Content="{local:Translate Key='Інсталяції Java'}" Click="ManageJava"/>
-                        <TextBlock x:Name="JavaStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                        <Button Content="{local:Translate Key='Увімкнути посилання Gradient'}" Click="RegisterProjectLinks"/>
-                        <Button x:Name="CheckUpdateButton" Content="{local:Translate Key='Перевірити оновлення'}" Click="CheckUpdate"/>
-                        <TextBlock x:Name="UpdateStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                        <HyperlinkButton x:Name="UpdateDownload" Visibility="Collapsed"/>
+                    <StackPanel Padding="28" Spacing="12" MaxWidth="800">
+                        <StackPanel.Resources>
+                            <Style x:Key="SettingsCard" TargetType="Border">
+                                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+                                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Setter Property="CornerRadius" Value="10"/>
+                                <Setter Property="Padding" Value="18"/>
+                            </Style>
+                        </StackPanel.Resources>
+                        <TextBlock Text="{local:Translate Key='Налаштування'}" Style="{StaticResource TitleTextBlockStyle}"
+                                   Margin="0,0,0,6"/>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="{local:Translate Key='Вигляд і мова'}" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                                <ComboBox x:Name="ThemeSetting" Header="{local:Translate Key='Тема'}" HorizontalAlignment="Left"
+                                          MinWidth="170" SelectionChanged="ChangeAppearance">
+                                    <ComboBoxItem Content="{local:Translate Key='Системна'}" Tag="system"/>
+                                    <ComboBoxItem Content="{local:Translate Key='Світла'}" Tag="light"/>
+                                    <ComboBoxItem Content="{local:Translate Key='Темна'}" Tag="dark"/>
+                                </ComboBox>
+                                <ComboBox x:Name="LanguageSetting" Header="{local:Translate Key='Мова'}" HorizontalAlignment="Left"
+                                          MinWidth="170" SelectionChanged="ChangeAppearance">
+                                    <ComboBoxItem Content="Українська" Tag="uk"/>
+                                    <ComboBoxItem Content="English" Tag="en"/>
+                                </ComboBox>
+                                <NumberBox x:Name="SidebarLimitSetting" Header="{local:Translate Key='Профілів у бічній панелі'}"
+                                           HorizontalAlignment="Left" Minimum="1" Maximum="30" SpinButtonPlacementMode="Inline"
+                                           ValueChanged="ChangeSidebarLimit"/>
+                                <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="{local:Translate Key='Налаштування запуску'}" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                                <TextBox x:Name="MemorySetting" Header="{local:Translate Key='Максимум пам’яті (МіБ)'}" InputScope="Number"
+                                         HorizontalAlignment="Left" MinWidth="170"/>
+                                <ToggleSwitch x:Name="FullscreenSetting" Header="{local:Translate Key='На весь екран'}"
+                                              OnContent="{local:Translate Key='Увімкнено'}" OffContent="{local:Translate Key='Вимкнено'}"/>
+                                <Grid ColumnSpacing="12" HorizontalAlignment="Left" MaxWidth="360">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="WidthSetting" Header="{local:Translate Key='Ширина (пкс)'}" InputScope="Number" Width="128"/>
+                                    <TextBox x:Name="HeightSetting" Header="{local:Translate Key='Висота (пкс)'}" InputScope="Number" Width="128" Grid.Column="1"/>
+                                </Grid>
+                                <Expander Header="{local:Translate Key='Java та JVM'}" HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch">
+                                    <StackPanel Spacing="10">
+                                        <Button Content="{local:Translate Key='Інсталяції Java'}" Click="ManageJava"/>
+                                        <TextBlock x:Name="JavaStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                        <TextBox x:Name="ArgumentsSetting" Header="{local:Translate Key='Аргументи JVM · один на рядок'}"
+                                                 AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" MinHeight="96"/>
+                                    </StackPanel>
+                                </Expander>
+                                <Button x:Name="SaveSettingsButton" Content="{local:Translate Key='Зберегти'}" Click="SaveSettings"
+                                        Style="{StaticResource AccentButtonStyle}"/>
+                                <TextBlock x:Name="SettingsStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="{local:Translate Key='Інтеграція з Windows'}" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                                <Button Content="{local:Translate Key='Увімкнути посилання Gradient'}" Click="RegisterProjectLinks"/>
+                                <TextBlock x:Name="IntegrationStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="{local:Translate Key='Оновлення Gradient'}" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                                <Button x:Name="CheckUpdateButton" Content="{local:Translate Key='Перевірити оновлення'}" Click="CheckUpdate"/>
+                                <TextBlock x:Name="UpdateStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                <HyperlinkButton x:Name="UpdateDownload" Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="ProjectPage" Visibility="Collapsed"

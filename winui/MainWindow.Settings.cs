@@ -80,9 +80,9 @@ public sealed partial class MainWindow
             RegisterGradientScheme();
             Microsoft.Windows.AppLifecycle.ActivationRegistrationManager.RegisterForFileTypeActivation(
                 new[] { ".mrpack" }, "", "Gradient Launcher", Array.Empty<string>(), "");
-            SettingsStatus.Text = Tr("Gradient зареєстровано для посилань gradient-native:// та файлів .mrpack.");
+            IntegrationStatus.Text = Tr("Gradient зареєстровано для посилань gradient-native:// та файлів .mrpack.");
         }
-        catch (Exception error) { SettingsStatus.Text = error.Message; }
+        catch (Exception error) { IntegrationStatus.Text = error.Message; }
     }
 
     private static void RegisterGradientScheme() =>
@@ -161,14 +161,8 @@ public sealed partial class MainWindow
         DiscoverPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
         Navigation.SelectedItem = SettingsNavigation;
-        MemorySetting.Focus(FocusState.Programmatic);
+        SettingsPage.ChangeView(null, 0, null, true);
     }, waitForCore: true);
-
-    private void CloseSettings(object sender, RoutedEventArgs e)
-    {
-        if (!SaveSettingsButton.IsEnabled) return;
-        ShowLibrary();
-    }
 
     private async void SaveSettings(object sender, RoutedEventArgs e)
     {
