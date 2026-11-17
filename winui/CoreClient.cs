@@ -28,6 +28,10 @@ internal sealed class CoreClient : IDisposable
                 StandardInputEncoding = new UTF8Encoding(false),
                 StandardOutputEncoding = Encoding.UTF8
             };
+            if (!info.Environment.ContainsKey("THESEUS_DB_BACKUP_DIR"))
+                info.Environment["THESEUS_DB_BACKUP_DIR"] = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Gradient", "Backups", "app-db");
             process = Process.Start(info) ?? throw new IOException(Tr("Не вдалося запустити ядро."));
             try
             {

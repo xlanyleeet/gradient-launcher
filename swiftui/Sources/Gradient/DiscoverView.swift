@@ -41,6 +41,12 @@ struct DiscoverView: View {
         let id: String
         let name: String
         let channel: String
+        let game_versions: [String]?
+
+        var label: String {
+            guard let game_versions, !game_versions.isEmpty else { return "\(name) · \(channel)" }
+            return "\(name) · Minecraft \(game_versions.joined(separator: ", ")) · \(channel)"
+        }
     }
 
     private struct Page: Decodable {
@@ -234,7 +240,7 @@ struct DiscoverView: View {
                         } else {
                             Picker(tr("Версія"), selection: $version) {
                                 if version.isEmpty { Text(tr("Виберіть іншу версію")).tag("") }
-                                ForEach(versions) { entry in Text("\(entry.name) · \(entry.channel)").tag(entry.id) }
+                                ForEach(versions) { entry in Text(entry.label).tag(entry.id) }
                             }
                             .frame(maxWidth: 340)
                             .disabled(busy)

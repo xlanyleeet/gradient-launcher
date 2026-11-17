@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <Version>0.2.0</Version>
     <ApplicationIcon>Assets/Launcher.ico</ApplicationIcon>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Platform>x64</Platform>
@@ -13,6 +14,7 @@
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.6.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <PackageReference Include="Velopack" Version="1.2.161" />
     <Content Include="Assets/Cover.png" CopyToOutputDirectory="PreserveNewest" />

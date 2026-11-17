@@ -32,8 +32,8 @@
             </Button>
             <Image Grid.Column="3" Width="20" Height="20" Source="ms-appx:///Assets/Launcher.png"
                    AutomationProperties.AccessibilityView="Raw"/>
-            <AutoSuggestBox x:Name="Search" Grid.Column="4" MinWidth="0" Margin="4,0,8,0"
-                            VerticalAlignment="Center" QueryIcon="Find"
+            <AutoSuggestBox x:Name="Search" Grid.ColumnSpan="8" MinWidth="0" Width="0"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" QueryIcon="Find"
                             PlaceholderText="{local:Translate Key='Пошук профілів'}" AutomationProperties.Name="{local:Translate Key='Пошук профілів'}"
                             TextChanged="SearchChanged" QuerySubmitted="SubmitProfileSearch"/>
                 <Button x:Name="AccountsButton" Grid.Column="6" Width="40" Height="40" Padding="4,0"
@@ -94,6 +94,8 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
+                <NavigationViewItem x:Name="SkinNavigation" Content="{local:Translate Key='Скін Minecraft'}"
+                                    Icon="Contact" Visibility="Collapsed" SelectsOnInvoked="False"/>
                 <NavigationViewItem x:Name="WhatsNewNavigation" Content="{local:Translate Key='Що нового'}" Icon="Message"
                                     ToolTipService.ToolTip="{local:Translate Key='Що нового'}" SelectsOnInvoked="False"/>
                 <NavigationViewItem x:Name="SettingsNavigation" Content="{local:Translate Key='Налаштування'}" Icon="Setting"
@@ -121,6 +123,8 @@
                                             PlaceholderText="{local:Translate Key='Пошук профілів'}"/>
                             <Button Grid.Column="1" Content="{local:Translate Key='Новий профіль'}" Click="CreateProfile"/>
                         </Grid>
+                        <ProgressBar x:Name="StartupProgress" IsIndeterminate="True"
+                                     AutomationProperties.Name="{local:Translate Key='Завантажуємо бібліотеку…'}"/>
                         <GridView x:Name="LibraryCards" SelectionMode="None" IsItemClickEnabled="True" ItemClick="OpenLibraryProfile">
                             <GridView.ItemTemplate>
                                 <DataTemplate>
@@ -136,7 +140,22 @@
                                 </DataTemplate>
                             </GridView.ItemTemplate>
                         </GridView>
+                        <ListView x:Name="CompactLibrary" Visibility="Collapsed" SelectionMode="None"
+                                  IsItemClickEnabled="True" ItemClick="OpenLibraryProfile">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="12" Padding="6">
+                                        <Image Width="32" Height="32" Source="{Binding IconSource}"/>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding name}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding GameLabel}" Style="{StaticResource CaptionTextBlockStyle}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
                         <TextBlock x:Name="LibraryStatus" TextWrapping="Wrap"/>
+                        <Button x:Name="CopyLibraryDetails" Visibility="Collapsed" Content="{local:Translate Key='Копіювати'}" Click="CopyStatusDetails"/>
                     </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="LibraryPage" Visibility="Collapsed">
@@ -182,6 +201,7 @@
                                 <TextBlock x:Name="Metadata" Text="{local:Translate Key='Виберіть профіль або імпортуйте модпак.'}" TextWrapping="Wrap"/>
                             </Border>
                             <TextBlock x:Name="Status" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                            <Button x:Name="CopyProfileDetails" Visibility="Collapsed" Content="{local:Translate Key='Копіювати'}" Click="CopyStatusDetails"/>
                             <Pivot x:Name="Details" SelectionChanged="DetailChanged">
                                 <PivotItem x:Name="ContentTab" Header="{local:Translate Key='Контент'}">
                                     <StackPanel Spacing="8">
@@ -199,7 +219,7 @@
                                                    TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                                     </StackPanel>
                                 </PivotItem>
-                                <PivotItem Header="{local:Translate Key='Завантаження'}">
+                                <PivotItem x:Name="DownloadsTab" Header="{local:Translate Key='Завантаження'}">
                                     <StackPanel x:Name="Jobs" Spacing="8"/>
                                 </PivotItem>
                                 <PivotItem x:Name="WorldsTab" Header="{local:Translate Key='Світи'}">
@@ -234,85 +254,156 @@
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
-                <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-                    <StackPanel Padding="28" Spacing="12" MaxWidth="800">
-                        <StackPanel.Resources>
-                            <Style x:Key="SettingsCard" TargetType="Border">
-                                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
-                                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
-                                <Setter Property="BorderThickness" Value="1"/>
-                                <Setter Property="CornerRadius" Value="10"/>
-                                <Setter Property="Padding" Value="18"/>
-                            </Style>
-                        </StackPanel.Resources>
-                        <TextBlock Text="{local:Translate Key='Налаштування'}" Style="{StaticResource TitleTextBlockStyle}"
-                                   Margin="0,0,0,6"/>
-                        <Border Style="{StaticResource SettingsCard}">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="{local:Translate Key='Вигляд і мова'}" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                                <ComboBox x:Name="ThemeSetting" Header="{local:Translate Key='Тема'}" HorizontalAlignment="Left"
-                                          MinWidth="170" SelectionChanged="ChangeAppearance">
-                                    <ComboBoxItem Content="{local:Translate Key='Системна'}" Tag="system"/>
-                                    <ComboBoxItem Content="{local:Translate Key='Світла'}" Tag="light"/>
-                                    <ComboBoxItem Content="{local:Translate Key='Темна'}" Tag="dark"/>
-                                </ComboBox>
-                                <ComboBox x:Name="LanguageSetting" Header="{local:Translate Key='Мова'}" HorizontalAlignment="Left"
-                                          MinWidth="170" SelectionChanged="ChangeAppearance">
-                                    <ComboBoxItem Content="Українська" Tag="uk"/>
-                                    <ComboBoxItem Content="English" Tag="en"/>
-                                </ComboBox>
-                                <NumberBox x:Name="SidebarLimitSetting" Header="{local:Translate Key='Профілів у бічній панелі'}"
-                                           HorizontalAlignment="Left" Minimum="1" Maximum="30" SpinButtonPlacementMode="Inline"
-                                           ValueChanged="ChangeSidebarLimit"/>
-                                <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" HorizontalContentAlignment="Stretch"
+                              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+                    <Grid Padding="24,28,24,32">
+                        <StackPanel Spacing="14" MaxWidth="760">
+                            <StackPanel.Resources>
+                                <Style x:Key="SettingsCard" TargetType="Border">
+                                    <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+                                    <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                                    <Setter Property="BorderThickness" Value="1"/>
+                                    <Setter Property="CornerRadius" Value="8"/>
+                                    <Setter Property="Padding" Value="16,12"/>
+                                </Style>
+                            </StackPanel.Resources>
+                            <TextBlock Text="{local:Translate Key='Налаштування'}" Style="{StaticResource TitleTextBlockStyle}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="{local:Translate Key='Поведінка'}" Click="EditExtraPreferences"/>
+                                <Button Content="{local:Translate Key='Сховище й діагностика'}" Click="OpenStorageSettings"/>
                             </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource SettingsCard}">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="{local:Translate Key='Налаштування запуску'}" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                                <TextBox x:Name="MemorySetting" Header="{local:Translate Key='Максимум пам’яті (МіБ)'}" InputScope="Number"
-                                         HorizontalAlignment="Left" MinWidth="170"/>
-                                <ToggleSwitch x:Name="FullscreenSetting" Header="{local:Translate Key='На весь екран'}"
-                                              OnContent="{local:Translate Key='Увімкнено'}" OffContent="{local:Translate Key='Вимкнено'}"/>
-                                <Grid ColumnSpacing="12" HorizontalAlignment="Left" MaxWidth="360">
-                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="WidthSetting" Header="{local:Translate Key='Ширина (пкс)'}" InputScope="Number" Width="128"/>
-                                    <TextBox x:Name="HeightSetting" Header="{local:Translate Key='Висота (пкс)'}" InputScope="Number" Width="128" Grid.Column="1"/>
-                                </Grid>
-                                <Expander Header="{local:Translate Key='Java та JVM'}" HorizontalAlignment="Stretch"
-                                          HorizontalContentAlignment="Stretch">
-                                    <StackPanel Spacing="10">
-                                        <Button Content="{local:Translate Key='Інсталяції Java'}" Click="ManageJava"/>
-                                        <TextBlock x:Name="JavaStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                                        <TextBox x:Name="ArgumentsSetting" Header="{local:Translate Key='Аргументи JVM · один на рядок'}"
-                                                 AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" MinHeight="96"/>
-                                    </StackPanel>
-                                </Expander>
-                                <Button x:Name="SaveSettingsButton" Content="{local:Translate Key='Зберегти'}" Click="SaveSettings"
-                                        Style="{StaticResource AccentButtonStyle}"/>
-                                <TextBlock x:Name="SettingsStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource SettingsCard}">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="{local:Translate Key='Інтеграція з Windows'}" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                                <Button Content="{local:Translate Key='Увімкнути посилання Gradient'}" Click="RegisterProjectLinks"/>
-                                <TextBlock x:Name="IntegrationStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource SettingsCard}">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="{local:Translate Key='Оновлення Gradient'}" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                                <Button x:Name="CheckUpdateButton" Content="{local:Translate Key='Перевірити оновлення'}" Click="CheckUpdate"/>
-                                <TextBlock x:Name="UpdateStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                                <HyperlinkButton x:Name="UpdateDownload" Visibility="Collapsed"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{local:Translate Key='Вигляд і мова'}" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,2"/>
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='Тема'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="ThemeSetting" Grid.Column="1" Width="144" VerticalAlignment="Center"
+                                                  AutomationProperties.Name="{local:Translate Key='Тема'}" SelectionChanged="ChangeAppearance">
+                                            <ComboBoxItem Content="{local:Translate Key='Системна'}" Tag="system"/>
+                                            <ComboBoxItem Content="{local:Translate Key='Світла'}" Tag="light"/>
+                                            <ComboBoxItem Content="{local:Translate Key='Темна'}" Tag="dark"/>
+                                        </ComboBox>
+                                    </Grid>
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='Мова'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="LanguageSetting" Grid.Column="1" Width="144" VerticalAlignment="Center"
+                                                  AutomationProperties.Name="{local:Translate Key='Мова'}" SelectionChanged="ChangeAppearance">
+                                            <ComboBoxItem Content="Українська" Tag="uk"/>
+                                            <ComboBoxItem Content="English" Tag="en"/>
+                                        </ComboBox>
+                                    </Grid>
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='Профілів у бічній панелі'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <NumberBox x:Name="SidebarLimitSetting" Grid.Column="1" Width="144" VerticalAlignment="Center"
+                                                   AutomationProperties.Name="{local:Translate Key='Профілів у бічній панелі'}"
+                                                   Minimum="1" Maximum="30" SpinButtonPlacementMode="Inline" ValueChanged="ChangeSidebarLimit"/>
+                                    </Grid>
+                                    <TextBlock x:Name="AppearanceStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{local:Translate Key='Налаштування запуску'}" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,2"/>
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='Максимум пам’яті (МіБ)'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="MemorySetting" Grid.Column="1" Width="144" VerticalAlignment="Center"
+                                                 AutomationProperties.Name="{local:Translate Key='Максимум пам’яті (МіБ)'}" InputScope="Number"/>
+                                    </Grid>
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='На весь екран'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <ToggleSwitch x:Name="FullscreenSetting" Grid.Column="1" MinWidth="0" VerticalAlignment="Center"
+                                                      AutomationProperties.Name="{local:Translate Key='На весь екран'}"
+                                                      OnContent="" OffContent=""/>
+                                    </Grid>
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='Ширина (пкс)'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="WidthSetting" Grid.Column="1" Width="144" VerticalAlignment="Center"
+                                                 AutomationProperties.Name="{local:Translate Key='Ширина (пкс)'}" InputScope="Number"/>
+                                    </Grid>
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='Висота (пкс)'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="HeightSetting" Grid.Column="1" Width="144" VerticalAlignment="Center"
+                                                 AutomationProperties.Name="{local:Translate Key='Висота (пкс)'}" InputScope="Number"/>
+                                    </Grid>
+                                    <Expander Header="{local:Translate Key='Java та JVM'}" HorizontalAlignment="Stretch"
+                                              HorizontalContentAlignment="Stretch" Margin="0,6,0,0">
+                                        <StackPanel Spacing="10">
+                                            <Button Content="{local:Translate Key='Інсталяції Java'}" Click="ManageJava"/>
+                                            <Button Content="{local:Translate Key='Пресет JVM'}">
+                                                <Button.Flyout>
+                                                    <MenuFlyout>
+                                                        <MenuFlyoutItem Text="{local:Translate Key='Застосувати G1GC'}" Click="UseG1Preset"/>
+                                                        <MenuFlyoutItem Text="{local:Translate Key='Застосувати ZGC (Java 21+)'}" Click="UseZgcPreset"/>
+                                                        <MenuFlyoutItem Text="{local:Translate Key='Застосувати Shenandoah (сумісна Java)'}" Click="UseShenandoahPreset"/>
+                                                        <MenuFlyoutItem Text="{local:Translate Key='Очистити аргументи JVM'}" Click="ResetJvmArguments"/>
+                                                    </MenuFlyout>
+                                                </Button.Flyout>
+                                            </Button>
+                                            <TextBlock x:Name="JavaStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                            <TextBox x:Name="ArgumentsSetting" Header="{local:Translate Key='Аргументи JVM · один на рядок'}"
+                                                     AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" MinHeight="96"/>
+                                        </StackPanel>
+                                    </Expander>
+                                    <Button x:Name="SaveSettingsButton" Content="{local:Translate Key='Зберегти'}" Click="SaveSettings"
+                                            Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Right" Margin="0,8,0,0"/>
+                                    <TextBlock x:Name="SettingsStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{local:Translate Key='Інтеграції'}" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,2"/>
+                                    <Grid ColumnSpacing="12" MinHeight="48">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="4" VerticalAlignment="Center">
+                                            <TextBlock Text="Discord Rich Presence"/>
+                                            <TextBlock Text="{local:Translate Key='Показувати в Discord, коли відкрито лаунчер або запущено профіль Minecraft.'}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                        <ToggleSwitch x:Name="DiscordPresenceSetting" Grid.Column="1" MinWidth="0" VerticalAlignment="Center"
+                                                      AutomationProperties.Name="Discord Rich Presence" IsEnabled="False"
+                                                      OnContent="" OffContent="" Toggled="ChangeDiscordPresence"/>
+                                    </Grid>
+                                    <TextBlock x:Name="DiscordStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='Посилання Gradient'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1" VerticalAlignment="Center"
+                                                Content="{local:Translate Key='Увімкнути посилання Gradient'}" Click="RegisterProjectLinks"/>
+                                    </Grid>
+                                    <TextBlock x:Name="IntegrationStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <StackPanel Spacing="4">
+                                    <Grid ColumnSpacing="12" MinHeight="44">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{local:Translate Key='Оновлення Gradient'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <Button x:Name="CheckUpdateButton" Grid.Column="1" VerticalAlignment="Center"
+                                                Content="{local:Translate Key='Перевірити оновлення'}" Click="CheckUpdate"/>
+                                    </Grid>
+                                    <TextBlock x:Name="UpdateStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                    <HyperlinkButton x:Name="UpdateDownload" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
                 </ScrollViewer>
                 <ScrollViewer x:Name="ProjectPage" Visibility="Collapsed"
                               Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-                    <StackPanel x:Name="ProjectContent" Padding="24" Spacing="20"/>
+                    <StackPanel x:Name="ProjectContent" Padding="24" Spacing="20">
+                        <StackPanel.ChildrenTransitions>
+                            <TransitionCollection>
+                                <EntranceThemeTransition FromVerticalOffset="18" IsStaggeringEnabled="False"/>
+                            </TransitionCollection>
+                        </StackPanel.ChildrenTransitions>
+                    </StackPanel>
                 </ScrollViewer>
                 <Grid x:Name="DiscoverPage" Visibility="Collapsed" Padding="24"
                       Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" RowSpacing="12">

@@ -12,7 +12,8 @@ namespace Gradient;
 
 public sealed partial class MainWindow
 {
-    private sealed record LaunchSettings(uint memory_mib, bool fullscreen, ushort width, ushort height, string[] arguments);
+    private sealed record LaunchSettings(uint memory_mib, bool fullscreen, ushort width, ushort height, string[] arguments, bool? discord_rpc = null);
+    private bool? discordPresence;
     private sealed record ProfileLaunchSettings(string? memory, string? java);
     private sealed record JavaRuntime(uint parsed_version, string version, string path);
     private sealed record UpdateInfo(string installed, AvailableUpdate? available);
@@ -22,7 +23,7 @@ public sealed partial class MainWindow
     {
         CheckUpdateButton.IsEnabled = false;
         UpdateDownload.Visibility = Visibility.Collapsed;
-        UpdateStatus.Text = Tr("Перевіряємо оновлення…");
+        SetSettingsStatus(UpdateStatus, Tr("Перевіряємо оновлення…"));
         try
         {
             await Run(async () =>
@@ -38,17 +39,17 @@ public sealed partial class MainWindow
                     var info = await core.Call<UpdateInfo>(new { method = "check_update" });
                     if (info.available is { } release)
                     {
-                        UpdateStatus.Text = Tr("Встановлено {0}. Доступна версія {1}.", info.installed, release.version);
+                        SetSettingsStatus(UpdateStatus, Tr("Встановлено {0}. Доступна версія {1}.", info.installed, release.version));
                         UpdateDownload.Content = Tr("Завантажити {0}", release.version);
                         UpdateDownload.NavigateUri = new Uri(release.download_url);
                         UpdateDownload.Visibility = Visibility.Visible;
                     }
                     else
                     {
-                        UpdateStatus.Text = Tr("Встановлено {0}. Новішого релізу для цієї платформи немає.", info.installed);
+                        SetSettingsStatus(UpdateStatus, Tr("Встановлено {0}. Новішого релізу для цієї платформи немає.", info.installed));
                     }
                 }
-                catch (Exception error) { UpdateStatus.Text = error.Message; }
+                catch (Exception error) { SetSettingsStatus(UpdateStatus, error.Message); }
             }, waitForCore: true);
         }
         finally { CheckUpdateButton.IsEnabled = true; }
@@ -59,15 +60,15 @@ public sealed partial class MainWindow
         var update = await manager.CheckForUpdatesAsync();
         if (update is null)
         {
-            UpdateStatus.Text = Tr("Встановлено {0}. Новішого релізу немає.", manager.CurrentVersion);
+            SetSettingsStatus(UpdateStatus, Tr("Встановлено {0}. Новішого релізу немає.", manager.CurrentVersion));
             return;
         }
         var version = update.TargetFullRelease.Version;
-        UpdateStatus.Text = Tr("Доступна версія {0}.", version);
+        SetSettingsStatus(UpdateStatus, Tr("Доступна версія {0}.", version));
         var dialog = Editor(Tr("Оновлення Gradient"), Tr("Завантажити версію {0} й перезапустити лаунчер?", version), Tr("Оновити й перезапустити"));
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         await core.Call<JsonElement>(new { method = "prepare_launcher_update" });
-        UpdateStatus.Text = Tr("Завантажуємо {0}…", version);
+        SetSettingsStatus(UpdateStatus, Tr("Завантажуємо {0}…", version));
         await manager.DownloadUpdatesAsync(update);
         await core.StopForUpdateAsync();
         manager.ApplyUpdatesAndRestart(update.TargetFullRelease);
@@ -80,9 +81,9 @@ public sealed partial class MainWindow
             RegisterGradientScheme();
             Microsoft.Windows.AppLifecycle.ActivationRegistrationManager.RegisterForFileTypeActivation(
                 new[] { ".mrpack" }, "", "Gradient Launcher", Array.Empty<string>(), "");
-            IntegrationStatus.Text = Tr("Gradient зареєстровано для посилань gradient-native:// та файлів .mrpack.");
+            SetSettingsStatus(IntegrationStatus, Tr("Gradient зареєстровано для посилань gradient-native:// та файлів .mrpack."));
         }
-        catch (Exception error) { IntegrationStatus.Text = error.Message; }
+        catch (Exception error) { SetSettingsStatus(IntegrationStatus, error.Message); }
     }
 
     private static void RegisterGradientScheme() =>
@@ -121,13 +122,13 @@ public sealed partial class MainWindow
             }
             else if (result == ContentDialogResult.Secondary)
             {
-                JavaStatus.Text = Tr("Завантажуємо Java {0}…", major);
+                SetSettingsStatus(JavaStatus, Tr("Завантажуємо Java {0}…", major));
                 await core.Call<JsonElement>(new { method = "download_java_runtime", major });
             }
             else return;
-            JavaStatus.Text = Tr("Java {0} збережено.", major);
+            SetSettingsStatus(JavaStatus, Tr("Java {0} збережено.", major));
         }
-        catch (Exception error) { JavaStatus.Text = error.Message; }
+        catch (Exception error) { SetSettingsStatus(JavaStatus, error.Message); }
     }, waitForCore: true);
 
     private async void EditProfileLaunchSettings(object sender, RoutedEventArgs e) => await Run(async () =>
@@ -152,8 +153,12 @@ public sealed partial class MainWindow
         WidthSetting.Text = values.width.ToString();
         HeightSetting.Text = values.height.ToString();
         ArgumentsSetting.Text = string.Join(Environment.NewLine, values.arguments);
+        discordPresence = values.discord_rpc;
+        DiscordPresenceSetting.IsOn = discordPresence == true;
+        DiscordPresenceSetting.IsEnabled = discordPresence.HasValue;
+        SetSettingsStatus(DiscordStatus, discordPresence.HasValue ? "" : Tr("Для Discord Rich Presence потрібне оновлення ядра."));
         SaveSettingsButton.IsEnabled = true;
-        SettingsStatus.Text = "";
+        SetSettingsStatus(SettingsStatus, "");
         LibraryPage.Visibility = Visibility.Collapsed;
         LibraryHome.Visibility = Visibility.Collapsed;
         ProjectPage.Visibility = Visibility.Collapsed;
@@ -164,13 +169,40 @@ public sealed partial class MainWindow
         SettingsPage.ChangeView(null, 0, null, true);
     }, waitForCore: true);
 
+    private async void ChangeDiscordPresence(object sender, RoutedEventArgs e)
+    {
+        if (discordPresence is not bool previous || !DiscordPresenceSetting.IsEnabled || DiscordPresenceSetting.IsOn == previous)
+            return;
+
+        var enabled = DiscordPresenceSetting.IsOn;
+        DiscordPresenceSetting.IsEnabled = false;
+        SetSettingsStatus(DiscordStatus, "");
+        try
+        {
+            await core.Call<JsonElement>(new { method = "set_discord_presence", enabled });
+            discordPresence = enabled;
+        }
+        catch (Exception error)
+        {
+            DiscordPresenceSetting.IsOn = previous;
+            SetSettingsStatus(DiscordStatus, error.Message);
+        }
+        finally { DiscordPresenceSetting.IsEnabled = true; }
+    }
+
+    private static void SetSettingsStatus(TextBlock status, string message)
+    {
+        status.Text = message;
+        status.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private async void SaveSettings(object sender, RoutedEventArgs e)
     {
         if (!uint.TryParse(MemorySetting.Text, out var memory) || memory == 0 ||
             !ushort.TryParse(WidthSetting.Text, out var width) || width == 0 ||
             !ushort.TryParse(HeightSetting.Text, out var height) || height == 0)
         {
-            SettingsStatus.Text = Tr("Введіть додатні цілі значення пам’яті та роздільної здатності.");
+            SetSettingsStatus(SettingsStatus, Tr("Введіть додатні цілі значення пам’яті та роздільної здатності."));
             return;
         }
 
@@ -182,9 +214,9 @@ public sealed partial class MainWindow
                 var arguments = ArgumentsSetting.Text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
                 var values = new LaunchSettings(memory, FullscreenSetting.IsOn, width, height, arguments);
                 await core.Call<JsonElement>(new { method = "save_launch_settings", values });
-                SettingsStatus.Text = Tr("Налаштування збережено.");
+                SetSettingsStatus(SettingsStatus, Tr("Налаштування збережено."));
             }
-            catch (Exception error) { SettingsStatus.Text = error.Message; }
+            catch (Exception error) { SetSettingsStatus(SettingsStatus, error.Message); }
             finally { SaveSettingsButton.IsEnabled = true; }
         });
     }

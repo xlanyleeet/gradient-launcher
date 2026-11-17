@@ -6,6 +6,7 @@ private struct LaunchSettings: Codable {
     var width: UInt16
     var height: UInt16
     var arguments: [String]
+    var discord_rpc: Bool? = nil
 }
 
 private struct SaveLaunchSettings: Encodable {
@@ -40,6 +41,14 @@ struct LaunchSettingsView: View {
     @State private var updateInfo: UpdateInfo?
     @State private var updateError: String?
     @State private var checkingUpdate = false
+    @State private var discordPresence: Bool?
+    @State private var savingDiscordPresence = false
+    @State private var discordError: String?
+
+    private struct SetDiscordPresence: Encodable {
+        let method = "set_discord_presence"
+        let enabled: Bool
+    }
 
     private var values: LaunchSettings? {
         guard let memory = UInt32(memory), memory > 0,
@@ -57,11 +66,20 @@ struct LaunchSettingsView: View {
             Tab(LocalizedStringKey(tr("Запуск")), systemImage: "play.circle") {
                 gameSettings
             }
+            Tab(LocalizedStringKey(tr("Поведінка")), systemImage: "slider.horizontal.3") {
+                NativePreferencesView(core: core)
+            }
+            Tab(LocalizedStringKey(tr("Сховище й діагностика")), systemImage: "internaldrive") {
+                StoragePreferencesView(core: core)
+            }
+            Tab(LocalizedStringKey(tr("Інтеграції")), systemImage: "puzzlepiece.extension") {
+                integrationSettings
+            }
             Tab(LocalizedStringKey(tr("Оновлення Gradient")), systemImage: "arrow.down.circle") {
                 updateSettings
             }
         }
-        .frame(width: 560, height: 480)
+        .frame(width: 720, height: 530)
         .task { if !loaded { await load() } }
         .sheet(isPresented: $showJava) { JavaRuntimesView(core: core) }
     }
@@ -100,6 +118,12 @@ struct LaunchSettingsView: View {
                 Button(tr("Інсталяції Java…")) { showJava = true }
             }
             Section(tr("Аргументи JVM")) {
+                Menu(tr("Пресет JVM")) {
+                    Button(tr("Застосувати G1GC")) { arguments = "-XX:+UseG1GC" }
+                    Button(tr("Застосувати ZGC (Java 21+)")) { arguments = "-XX:+UseZGC" }
+                    Button(tr("Застосувати Shenandoah (сумісна Java)")) { arguments = "-XX:+UseShenandoahGC" }
+                    Button(tr("Очистити аргументи JVM")) { arguments = "" }
+                }
                 TextEditor(text: $arguments)
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 90)
@@ -116,6 +140,40 @@ struct LaunchSettingsView: View {
             if !status.isEmpty { Text(status) }
         }
         .formStyle(.grouped)
+    }
+
+    private var integrationSettings: some View {
+        Form {
+            Section("Discord") {
+                Toggle("Discord Rich Presence", isOn: Binding(
+                    get: { discordPresence == true },
+                    set: { enabled in Task { await saveDiscordPresence(enabled) } }
+                ))
+                .disabled(discordPresence == nil || savingDiscordPresence)
+                Text(tr("Показувати в Discord, коли відкрито лаунчер або запущено профіль Minecraft."))
+                    .foregroundStyle(.secondary)
+                if let discordError {
+                    Text(discordError)
+                } else if loaded && discordPresence == nil {
+                    Text(tr("Для Discord Rich Presence потрібне оновлення ядра."))
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    @MainActor private func saveDiscordPresence(_ enabled: Bool) async {
+        guard let previous = discordPresence, previous != enabled, !savingDiscordPresence else { return }
+        savingDiscordPresence = true
+        discordError = nil
+        discordPresence = enabled
+        defer { savingDiscordPresence = false }
+        do {
+            _ = try await core.send(SetDiscordPresence(enabled: enabled), as: EmptyReply.self)
+        } catch {
+            discordPresence = previous
+            discordError = error.localizedDescription
+        }
     }
 
     private var updateSettings: some View {
@@ -166,6 +224,7 @@ struct LaunchSettingsView: View {
             width = String(settings.width)
             height = String(settings.height)
             fullscreen = settings.fullscreen
+            if !savingDiscordPresence { discordPresence = settings.discord_rpc }
             arguments = settings.arguments.joined(separator: "\n")
             loaded = true
             status = ""

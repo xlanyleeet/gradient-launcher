@@ -25,6 +25,9 @@ public sealed partial class MainWindow
         var right = AppWindow.TitleBar.RightInset / scale;
         if (CaptionLeftSpace.Width.Value != left) CaptionLeftSpace.Width = new GridLength(left);
         if (CaptionRightSpace.Width.Value != right) CaptionRightSpace.Width = new GridLength(right);
+        var spaceBesideSearch = Math.Max(left + 124, right + 48) + 12;
+        var searchWidth = Math.Clamp(Layout.ActualWidth - 2 * spaceBesideSearch, 0, 760);
+        if (Search.Width != searchWidth) Search.Width = searchWidth;
 
         var regions = new List<RectInt32>(4);
         foreach (var element in new FrameworkElement[] { PaneButton, BackButton, Search, AccountsButton })
@@ -90,11 +93,11 @@ public sealed partial class MainWindow
             next.Save();
             appearance = next;
             ApplyTheme();
-            AppearanceStatus.Text = appearance.Language != InterfaceText.Language
+            SetSettingsStatus(AppearanceStatus, appearance.Language != InterfaceText.Language
                 ? Tr("Перезапустіть Gradient, щоб змінити мову.")
-                : "";
+                : "");
         }
-        catch (Exception error) { AppearanceStatus.Text = error.Message; }
+        catch (Exception error) { SetSettingsStatus(AppearanceStatus, error.Message); }
     }
 
     private void ChangeSidebarLimit(NumberBox sender, NumberBoxValueChangedEventArgs args)
@@ -108,6 +111,6 @@ public sealed partial class MainWindow
             showAllProfiles = false;
             FilterProfiles();
         }
-        catch (Exception error) { AppearanceStatus.Text = error.Message; }
+        catch (Exception error) { SetSettingsStatus(AppearanceStatus, error.Message); }
     }
 }

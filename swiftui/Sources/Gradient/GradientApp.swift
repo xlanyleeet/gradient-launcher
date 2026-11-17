@@ -33,6 +33,7 @@ private struct Profile: Decodable, Identifiable, Equatable {
     let running: Bool
     let quarantined: Bool
     let icon: String?
+    let play_seconds: UInt64?
 }
 
 private struct Account: Decodable, Identifiable, Equatable {
@@ -40,6 +41,7 @@ private struct Account: Decodable, Identifiable, Equatable {
     let name: String
     let selected: Bool
     let avatar_url: URL?
+    let avatar_png: Data?
 }
 
 private struct QuickEntry: Decodable, Hashable {
@@ -141,6 +143,9 @@ private struct LauncherView: View {
     @State private var showLibraryHome = true
     @State private var showAllProfiles = false
     @AppStorage("interface.sidebarProfiles") private var sidebarLimit = 6
+    @State private var startingLibrary = true
+    @State private var nativePreferences: NativePreferences?
+    @State private var gameWindow: NSWindow?
     @State private var quickEntries: [QuickEntry] = []
     @State private var quickExpanded = true
     @State private var showPackContent = false
@@ -203,6 +208,10 @@ private struct LauncherView: View {
             detailView
         }
         .searchable(text: $search, prompt: Text(tr("Пошук профілів")))
+        .task { await loadNativePreferences() }
+        .onReceive(NotificationCenter.default.publisher(for: PreferenceBridge.didSave)) { _ in
+            Task { await loadNativePreferences() }
+        }
         .task {
             while !Task.isCancelled {
                 await poll()
@@ -214,12 +223,12 @@ private struct LauncherView: View {
                 URL(fileURLWithPath: $0).pathExtension.lowercased() == "mrpack" &&
                 FileManager.default.fileExists(atPath: $0)
             }) {
-                pendingPack = URL(fileURLWithPath: argument)
+                requestPackImport(URL(fileURLWithPath: argument))
             }
         }
         .onOpenURL { url in
             if url.isFileURL && url.pathExtension.lowercased() == "mrpack" {
-                pendingPack = url
+                requestPackImport(url)
             } else if url.scheme == "gradient-native", url.host == "launch" {
                 Task { await openProfileShortcut(url) }
             } else if let scheme = url.scheme, ["gradient-native", "gradient", "modrinth"].contains(scheme) {
@@ -344,7 +353,11 @@ private struct LauncherView: View {
         .sheet(item: $diagnosticsJob) { job in
             JobDiagnosticsView(core: core, jobID: job.id)
         }
-        .sheet(isPresented: $skinSettings) { SkinSettingsView(core: core) }
+        .sheet(isPresented: $skinSettings) {
+            SkinSettingsView(core: core) {
+                if let updated = try? await core.call("accounts", as: [Account].self) { accounts = updated }
+            }
+        }
     }
 
     private var sidebarProfiles: [Profile] {
@@ -380,6 +393,9 @@ private struct LauncherView: View {
             LazyVStack(spacing: 5) {
                 sidebarAction(tr("Бібліотека"), icon: "square.grid.2x2", action: returnToLibrary)
                 sidebarAction(tr("Каталог Modrinth"), icon: "safari") { showDiscover = true }
+                if nativePreferences?.show_skin_selector_in_sidebar == true {
+                    sidebarAction(tr("Скін Minecraft"), icon: "person.crop.square") { skinSettings = true }
+                }
                 Divider().padding(.horizontal, 8).padding(.vertical, 4)
                 ForEach(sidebarProfiles, content: sidebarProfileRow)
                 if profiles.count > sidebarLimit {
@@ -429,6 +445,36 @@ private struct LauncherView: View {
         }
     }
 
+    @ViewBuilder private var statusDetails: some View {
+        if !status.isEmpty {
+            Text(status).font(.callout)
+            if nativePreferences?.always_show_copy_details == true {
+                Button(tr("Копіювати"), systemImage: "document.on.document") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(status, forType: .string)
+                }
+                .buttonStyle(.link)
+            }
+        }
+    }
+
+    private var visibleProfileTabs: [ProfileTab] {
+        ProfileTab.allCases.filter {
+            switch $0 {
+            case .worlds: nativePreferences?.show_worlds_tab_in_instances != false
+            case .files: nativePreferences?.show_files_tab_in_instances != false
+            case .screenshots: nativePreferences?.show_screenshots_tab_in_instances != false
+            default: true
+            }
+        }
+    }
+
+    @MainActor private func loadNativePreferences() async {
+        guard let preferences = try? await PreferenceBridge.call(core, "read", as: NativePreferences.self) else { return }
+        nativePreferences = preferences
+        if !visibleProfileTabs.contains(tab) { tab = .content }
+    }
+
     private var profileDetails: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -440,9 +486,9 @@ private struct LauncherView: View {
                     } ?? tr("Виберіть профіль або імпортуйте модпак."))
                     .font(.callout)
                     Divider()
-                    if !status.isEmpty { Text(status).font(.callout) }
+                    statusDetails
                     Picker(tr("Деталі"), selection: $tab) {
-                        ForEach(ProfileTab.allCases, id: \.self) { item in
+                        ForEach(visibleProfileTabs, id: \.self) { item in
                             Text(tr(item.rawValue)).tag(item)
                         }
                     }
@@ -493,7 +539,7 @@ private struct LauncherView: View {
     private var libraryHome: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if !quickEntries.isEmpty {
+                if nativePreferences?.show_jump_in != false && !quickEntries.isEmpty {
                     DisclosureGroup(tr("Швидкий перехід"), isExpanded: $quickExpanded) {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 185))], spacing: 10) {
                             ForEach(quickEntries, id: \.self) { entry in
@@ -521,26 +567,16 @@ private struct LauncherView: View {
                     Spacer()
                     Button(tr("Новий профіль"), systemImage: "plus", action: beginCreateProfile)
                 }
-                if !status.isEmpty { Text(status).font(.callout) }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 165), spacing: 12)], spacing: 12) {
+                statusDetails
+                if startingLibrary {
+                    ProgressView(tr("Завантажуємо бібліотеку…")).controlSize(.small)
+                }
+                LazyVGrid(columns: nativePreferences?.compact_instance_cards == true
+                          ? [GridItem(.flexible())]
+                          : [GridItem(.adaptive(minimum: 132, maximum: 165), spacing: 12)], spacing: 12) {
                     ForEach(filteredProfiles) { entry in
                         Button { openProfile(entry) } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Group {
-                                    if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
-                                        Image(nsImage: image).resizable().scaledToFit()
-                                    } else {
-                                        Image(systemName: "cube").font(.largeTitle)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 103)
-                                Text(entry.name).font(.headline).lineLimit(1)
-                                Text("\(entry.loader) \(entry.version)").font(.caption).foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                            libraryCard(entry)
                         }
                         .buttonStyle(.plain)
                     }
@@ -552,6 +588,34 @@ private struct LauncherView: View {
             do { quickEntries = try await core.call("quick_play", as: [QuickEntry].self) }
             catch { status = error.localizedDescription }
         }
+    }
+
+    private func libraryCard(_ entry: Profile) -> some View {
+        let compact = nativePreferences?.compact_instance_cards == true
+        let layout = compact ? AnyLayout(HStackLayout(spacing: 12))
+                             : AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+        return layout {
+            Group {
+                if let icon = entry.icon, let image = NSImage(contentsOfFile: icon) {
+                    Image(nsImage: image).resizable().scaledToFit()
+                } else {
+                    Image(systemName: "cube").font(compact ? .title2 : .largeTitle)
+                }
+            }
+            .frame(maxWidth: compact ? 32 : .infinity)
+            .frame(height: compact ? 32 : 103)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.name).font(.headline).lineLimit(1)
+                Text("\(entry.loader) \(entry.version)").font(.caption).foregroundStyle(.secondary)
+                if nativePreferences?.show_play_time == true {
+                    Text(tr("Час гри: {0} хв", String((entry.play_seconds ?? 0) / 60)))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var defaultAccountHead: some View {
@@ -899,10 +963,16 @@ private struct LauncherView: View {
             Button(tr("Увійти в Microsoft"), systemImage: "person.crop.circle", action: beginMicrosoft)
             Button(tr("Додати офлайн-акаунт"), systemImage: "person.badge.plus") { showLogin = true }
         } label: {
-            AsyncImage(url: active?.avatar_url) { image in
-                image.resizable().interpolation(.none).scaledToFit()
-            } placeholder: {
-                defaultAccountHead
+            Group {
+                if let png = active?.avatar_png, let head = NSImage(data: png) {
+                    Image(nsImage: head).resizable().interpolation(.none).scaledToFit()
+                } else {
+                    AsyncImage(url: active?.avatar_url) { image in
+                        image.resizable().interpolation(.none).scaledToFit()
+                    } placeholder: {
+                        defaultAccountHead
+                    }
+                }
             }
             .frame(width: 30, height: 30)
             .clipShape(RoundedRectangle(cornerRadius: 5))
@@ -1020,6 +1090,7 @@ private struct LauncherView: View {
     @MainActor private func poll() async {
         guard !(await core.isSuspendedForUpdate), !busy else { return }
         let revision = actionRevision
+        defer { startingLibrary = false }
         do { try await refresh(pollRevision: revision) }
         catch {
             if actionRevision == revision && !Task.isCancelled { status = error.localizedDescription }
@@ -1031,6 +1102,22 @@ private struct LauncherView: View {
         let nextJobs = try await core.call("queue", as: [Job].self)
         let nextAccounts = try await core.call("accounts", as: [Account].self)
         guard !Task.isCancelled, pollRevision == nil || pollRevision == actionRevision else { return }
+        let wasPlaying = profiles.contains(where: \.running)
+        let isPlaying = nextProfiles.contains(where: \.running)
+        if isPlaying && !wasPlaying, nativePreferences?.hide_on_process_start == true,
+           let window = NSApp.mainWindow {
+            gameWindow = window
+            window.miniaturize(nil)
+        }
+        if !isPlaying && wasPlaying {
+            if nativePreferences?.refocus_on_game_close == true,
+               let window = gameWindow ?? NSApp.mainWindow {
+                window.deminiaturize(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+            }
+            gameWindow = nil
+        }
         if profiles != nextProfiles { profiles = nextProfiles }
         if selectedID != nil && profile == nil { returnToLibrary(); selectedID = nil }
         if jobs != nextJobs { jobs = nextJobs }
@@ -1138,7 +1225,15 @@ private struct LauncherView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "mrpack") ?? .data]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        mutate("import", ["path": url.path], message: tr("Модпак додано до черги."))
+        requestPackImport(url)
+    }
+
+    private func requestPackImport(_ url: URL) {
+        if nativePreferences?.warn_on_unknown_modpacks != false {
+            pendingPack = url
+        } else {
+            mutate("import", ["path": url.path], message: tr("Модпак додано до черги."))
+        }
     }
 
     private func beginMicrosoft() {

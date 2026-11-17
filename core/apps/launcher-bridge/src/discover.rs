@@ -306,11 +306,21 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             else {
                 return Err("Modrinth не повернув результати пошуку.".into());
             };
-            let hits: Vec<_> = results.result.hits.into_iter().map(|hit| json!({
+            let mut installed = std::collections::HashSet::new();
+            if kind == Kind::Modpack && theseus::settings::get().await?.hide_installed_modpacks {
+                for profile in instance::list().await? {
+                    if let data::InstanceLink::ModrinthModpack { project_id, .. } = profile.link {
+                        installed.insert(project_id);
+                    }
+                }
+            }
+            let next_offset = offset.saturating_add(results.result.hits.len() as u32);
+            let hits: Vec<_> = results.result.hits.into_iter()
+                .filter(|hit| !installed.contains(&hit.project_id))
+                .map(|hit| json!({
                 "id": hit.project_id, "name": hit.title, "description": hit.description, "author": hit.author,
                 "icon": hit.icon_url,
             })).collect();
-            let next_offset = offset.saturating_add(hits.len() as u32);
             json!({
                 "hits": hits,
                 "next_offset": (next_offset > offset && next_offset < results.result.total_hits).then_some(next_offset),
@@ -329,7 +339,7 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                 std::cmp::Reverse(version.date_published)
             });
             json!(versions.into_iter().filter(|version| compatible(version, target.as_ref(), kind))
-                .map(|version| json!({ "id": version.id, "name": version.version_number, "channel": version.version_type }))
+                .map(|version| json!({ "id": version.id, "name": version.version_number, "channel": version.version_type, "game_versions": version.game_versions }))
                 .collect::<Vec<_>>())
         }
         Request::Project { project, kind } => {

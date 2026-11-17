@@ -119,6 +119,21 @@ pub async fn set(settings: Settings) -> crate::Result<()> {
     Ok(())
 }
 
+/// Save Discord activity visibility and apply it to the current session.
+pub async fn set_discord_presence(enabled: bool) -> crate::Result<()> {
+    let state = State::get().await?;
+    {
+        let _guard = state.lock_synced_options().await;
+        let mut settings = Settings::get(&state.pool).await?;
+        settings.discord_rpc = enabled;
+        settings.update(&state.pool).await?;
+    }
+    if let Err(error) = state.discord_rpc.clear_to_default(true).await {
+        tracing::debug!("Could not update Discord Rich Presence: {error}");
+    }
+    Ok(())
+}
+
 #[tracing::instrument]
 pub async fn cancel_directory_change(
     app_identifier: &str,

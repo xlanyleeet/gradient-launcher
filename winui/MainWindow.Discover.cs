@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 using static Gradient.InterfaceText;
@@ -16,9 +17,11 @@ public sealed partial class MainWindow
         public BitmapImage? IconSource => Uri.TryCreate(icon, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
             ? new BitmapImage(uri) { DecodePixelWidth = 96 } : null;
     }
-    public sealed record DiscoverVersion(string id, string name, string channel)
+    public sealed record DiscoverVersion(string id, string name, string channel, string[]? game_versions = null)
     {
-        public string Label => $"{name} · {channel}";
+        public string Label => game_versions is { Length: > 0 }
+            ? $"{name} · Minecraft {string.Join(", ", game_versions)} · {channel}"
+            : $"{name} · {channel}";
     }
 
     private sealed record SearchPage(DiscoverHit[] hits, uint? next_offset);
@@ -199,15 +202,28 @@ public sealed partial class MainWindow
         DiscoverPage.Visibility = Visibility.Collapsed;
         ProjectPage.Visibility = Visibility.Visible;
         ProjectPage.ChangeView(null, 0, null, true);
-        var hero = new Grid { MinHeight = 250, CornerRadius = new CornerRadius(16) };
-        if (ProjectImage(banner, 1100) is { } cover)
+        var hero = new Grid { MinHeight = 350, CornerRadius = new CornerRadius(16), Background = ProjectPage.Background };
+        if (Uri.TryCreate(banner, UriKind.Absolute, out var artwork) && artwork.Scheme == Uri.UriSchemeHttps)
         {
-            cover.Height = 336;
-            hero.Children.Add(cover);
+            hero.Background = new ImageBrush
+            {
+                ImageSource = new BitmapImage(artwork) { DecodePixelWidth = 2560 },
+                Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Center,
+            };
+            var shade = (ProjectPage.Background as SolidColorBrush)?.Color
+                ?? (ProjectPage.ActualTheme == ElementTheme.Dark ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White);
+            var fade = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 0),
+            };
+            fade.GradientStops.Add(new GradientStop { Color = shade, Offset = 0 });
+            fade.GradientStops.Add(new GradientStop { Color = Windows.UI.Color.FromArgb(232, shade.R, shade.G, shade.B), Offset = .45 });
+            fade.GradientStops.Add(new GradientStop { Color = Windows.UI.Color.FromArgb(0, shade.R, shade.G, shade.B), Offset = 1 });
+            hero.Children.Add(new Border { Background = fade, IsHitTestVisible = false });
         }
-        var header = new StackPanel { Spacing = 10, Padding = new Thickness(24), MaxWidth = 560,
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
-            Background = ProjectPage.Background };
+        var header = new StackPanel { Spacing = 10, Padding = new Thickness(24), MaxWidth = 540,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
         if (ProjectImage(icon, 88) is { } logo)
         {
             logo.Width = logo.Height = 68;
@@ -243,7 +259,8 @@ public sealed partial class MainWindow
             method = "discover", action = "versions", project = id, kind, profile
         });
         if (DiscoverPage.Visibility != Visibility.Visible) return;
-        var header = BeginProjectPage(name, author, details.description, details.icon, details.gallery, details.url);
+        var header = BeginProjectPage(name, author, details.description, details.icon,
+            details.gallery ?? details.gallery_images?.FirstOrDefault(), details.url);
         var notice = projectNotice!;
         var metadata = Tr("{0:N0} завантажень · {1} · Оновлено {2}", details.downloads, details.license, details.updated);
         header.Children.Add(new TextBlock { Text = metadata, TextWrapping = TextWrapping.Wrap });
@@ -257,7 +274,15 @@ public sealed partial class MainWindow
             picker.SelectedItem = preferredVersion is null ? versions.FirstOrDefault() : versions.FirstOrDefault(item => item.id == preferredVersion);
             if (picker.SelectedItem is null) notice.Text = Tr("Версія за посиланням недоступна. Можна вибрати іншу.");
             var install = new Button { Content = Tr("Встановити"), IsEnabled = picker.SelectedItem is not null };
-            picker.SelectionChanged += (_, _) => install.IsEnabled = picker.SelectedItem is not null;
+            var minecraftVersion = new TextBlock { TextWrapping = TextWrapping.Wrap };
+            void ShowVersion()
+            {
+                install.IsEnabled = picker.SelectedItem is not null;
+                minecraftVersion.Text = picker.SelectedItem is DiscoverVersion { game_versions: { Length: > 0 } } selected
+                    ? $"Minecraft {string.Join(", ", selected.game_versions)}" : "";
+            }
+            picker.SelectionChanged += (_, _) => ShowVersion();
+            ShowVersion();
             install.Click += async (_, _) => await DiscoverAction(async () =>
             {
                 if (!install.IsEnabled || picker.SelectedItem is not DiscoverVersion version ||
@@ -273,6 +298,7 @@ public sealed partial class MainWindow
                 finally { picker.IsEnabled = install.IsEnabled = true; }
             });
             header.Children.Add(picker);
+            header.Children.Add(minecraftVersion);
             header.Children.Add(install);
         }
 
@@ -293,7 +319,8 @@ public sealed partial class MainWindow
         if (!string.IsNullOrWhiteSpace(details.body))
         {
             ProjectContent.Children.Add(new TextBlock { Text = Tr("Опис"), FontSize = 20 });
-            ProjectContent.Children.Add(new TextBlock { Text = details.body, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+            Uri.TryCreate(details.url, UriKind.Absolute, out var projectUrl);
+            ProjectContent.Children.Add(ProjectMarkdown.Render(details.body, projectUrl));
         }
         DiscoverStatus.Text = "";
     }

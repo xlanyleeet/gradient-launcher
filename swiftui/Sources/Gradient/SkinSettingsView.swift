@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct SkinSettingsView: View {
     let core: CoreClient
+    let onSkinChanged: @MainActor () async -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var variant = "classic"
     @State private var confirmReset = false
@@ -108,6 +109,7 @@ struct SkinSettingsView: View {
         defer { busy = false }
         do {
             _ = try await core.call(method, arguments, as: EmptyReply.self)
+            await onSkinChanged()
             draftURL = nil
             draftReady = false
             try await refreshCurrent()

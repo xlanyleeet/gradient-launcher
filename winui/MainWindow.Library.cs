@@ -10,7 +10,7 @@ namespace Gradient;
 
 public sealed partial class MainWindow
 {
-    public sealed record Account(string id, string name, bool selected, string? avatar_url)
+    public sealed record Account(string id, string name, bool selected, string? avatar_url, string? avatar_png = null)
     {
         public string Label => selected ? Tr("{0} · Основний", name) : name;
     }
@@ -140,11 +140,13 @@ public sealed partial class MainWindow
         }
     }, waitForCore: true);
 
-    private static async Task SetSkinPreview(Image image, SkinPreview preview)
+    private static Task SetSkinPreview(Image image, SkinPreview preview) => SetPngSource(image, preview.preview);
+
+    private static async Task SetPngSource(Image image, string png)
     {
         using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
         using var writer = new Windows.Storage.Streams.DataWriter(stream);
-        writer.WriteBytes(Convert.FromBase64String(preview.preview));
+        writer.WriteBytes(Convert.FromBase64String(png));
         await writer.StoreAsync();
         writer.DetachStream();
         stream.Seek(0);
@@ -250,9 +252,12 @@ public sealed partial class MainWindow
     {
         var accounts = await core.Call<Account[]>(new { method = "accounts" });
         var active = accounts.FirstOrDefault(account => account.selected);
-        AccountAvatar.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
-            Uri.TryCreate(active?.avatar_url, UriKind.Absolute, out var avatar) && avatar.Scheme == Uri.UriSchemeHttps
-                ? avatar : DefaultAccountAvatar);
+        if (active?.avatar_png is { } png)
+            await SetPngSource(AccountAvatar, png);
+        else
+            AccountAvatar.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
+                Uri.TryCreate(active?.avatar_url, UriKind.Absolute, out var avatar) && avatar.Scheme == Uri.UriSchemeHttps
+                    ? avatar : DefaultAccountAvatar);
         var label = active is null ? Tr("Акаунти Minecraft") : Tr("Акаунти Minecraft · {0}", active.name);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AccountsButton, label);
         ToolTipService.SetToolTip(AccountsButton, label);

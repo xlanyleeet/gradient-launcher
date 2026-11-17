@@ -12,9 +12,12 @@ namespace Gradient;
 
 public sealed partial class MainWindow : Window
 {
-    public sealed record Profile(string id, string name, string version, string loader, string? last_played, bool running, bool quarantined, string? icon)
+    public sealed record Profile(string id, string name, string version, string loader, string? last_played, bool running, bool quarantined, string? icon, ulong play_seconds = 0)
     {
-        public string GameLabel => $"{loader} {version}";
+        public bool ShowPlayTime { get; init; }
+        public string GameLabel => ShowPlayTime
+            ? $"{loader} {version} · {Tr("Час гри: {0} хв", play_seconds / 60)}"
+            : $"{loader} {version}";
         public BitmapImage? IconSource => Uri.TryCreate(icon, UriKind.Absolute, out var uri) && uri.IsFile
             ? new BitmapImage(uri) : null;
     }
@@ -40,7 +43,11 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         InitializeAppearance();
-        Status.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) => LibraryStatus.Text = Status.Text);
+        Status.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
+        {
+            LibraryStatus.Text = Status.Text;
+            RefreshCopyDetails();
+        });
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
         AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
@@ -68,9 +75,15 @@ public sealed partial class MainWindow : Window
     {
         Layout.Loaded -= Start;
         UpdateTitleBar();
+        await Run(async () =>
+        {
+            try { ApplyPreferences(await PreferenceCall<NativePreferences>(new { action = "read" })); }
+            catch (IOException) { }
+        });
         await Run(RefreshAccountAvatar);
         await Run(Update);
         await Run(LoadQuickPlay);
+        StartupProgress.Visibility = Visibility.Collapsed;
         started.TrySetResult();
         if (!closed) timer.Start();
     }
@@ -85,7 +98,7 @@ public sealed partial class MainWindow : Window
         await Run(async () =>
         {
             var dialog = Editor(Tr("Імпортувати модпак?"), Path.GetFileName(path), Tr("Імпортувати"));
-            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            if (extraPreferences?.warn_on_unknown_modpacks == false || await dialog.ShowAsync() == ContentDialogResult.Primary)
                 await ApplyProfileChange(new { method = "import", path = Path.GetFullPath(path) },
                     Tr("Модпак додано до черги."));
         }, waitForCore: true);
@@ -129,6 +142,7 @@ public sealed partial class MainWindow : Window
         var next = await core.Call<Profile[]>(new { method = "library" });
         if (!library.SequenceEqual(next))
         {
+            ObserveGameWindows(next);
             library = next;
             FilterProfiles();
         }
@@ -143,7 +157,9 @@ public sealed partial class MainWindow : Window
     {
         var ordered = library.OrderBy(p => p.name, StringComparer.CurrentCultureIgnoreCase).ToArray();
         var filtered = ordered.Where(p => p.name.Contains(Search.Text, StringComparison.CurrentCultureIgnoreCase)).ToArray();
-        LibraryCards.ItemsSource = filtered;
+        var cards = filtered.Select(profile => profile with { ShowPlayTime = extraPreferences?.show_play_time == true }).ToArray();
+        LibraryCards.ItemsSource = cards;
+        CompactLibrary.ItemsSource = cards;
         var sidebar = showAllProfiles ? ordered : ordered.Take(SidebarLimit).ToArray();
         MoreProfilesNavigation.Visibility = library.Length > SidebarLimit ? Visibility.Visible : Visibility.Collapsed;
         var moreLabel = Tr(showAllProfiles ? "Менше" : "Більше");
@@ -332,6 +348,8 @@ public sealed partial class MainWindow : Window
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
         var file = await picker.PickSingleFileAsync();
         if (file is null) return;
+        if (extraPreferences?.warn_on_unknown_modpacks != false &&
+            await Editor(Tr("Імпортувати модпак?"), file.Name, Tr("Імпортувати")).ShowAsync() != ContentDialogResult.Primary) return;
         await core.Call<JsonElement>(new { method = "import", path = file.Path });
         Status.Text = Tr("Модпак додано до черги.");
         await Update();

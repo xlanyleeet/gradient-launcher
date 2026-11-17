@@ -37,6 +37,23 @@ pub async fn export_debug_info(
     cancel: CancellationToken,
     on_progress: impl Fn(DebugInfoExportProgress) + Send + Sync + 'static,
 ) -> crate::Result<bool> {
+    export(export_path, cancel, on_progress, true).await
+}
+
+pub async fn export_logs(
+    export_path: PathBuf,
+    cancel: CancellationToken,
+    on_progress: impl Fn(DebugInfoExportProgress) + Send + Sync + 'static,
+) -> crate::Result<bool> {
+    export(export_path, cancel, on_progress, false).await
+}
+
+async fn export(
+    export_path: PathBuf,
+    cancel: CancellationToken,
+    on_progress: impl Fn(DebugInfoExportProgress) + Send + Sync + 'static,
+    include_database: bool,
+) -> crate::Result<bool> {
     on_progress(DebugInfoExportProgress {
         stage: DebugInfoExportStage::Preparing,
         processed_bytes: 0,
@@ -47,39 +64,47 @@ pub async fn export_debug_info(
         state = State::get() => state?,
     };
     let directories = state.directories.clone();
-    let database_files = tempfile::tempdir()?;
-    let transaction = tokio::select! {
-        _ = cancel.cancelled() => return Ok(false),
-        transaction = state.pool.begin_with("BEGIN IMMEDIATE") => transaction?,
-    };
     let mut buffer = vec![0; 64 * 1024];
-    for name in ["app.db", "app.db-wal", "app.db-shm", "app.db-journal"] {
-        let source = directories.settings_dir.join(name);
-        let mut input = match tokio::fs::File::open(&source).await {
-            Ok(file) => file,
-            Err(error)
-                if name != "app.db"
-                    && error.kind() == std::io::ErrorKind::NotFound =>
-            {
-                continue;
-            }
-            Err(error) => return Err(IOError::with_path(error, &source).into()),
+    let database_files = if include_database {
+        let database_files = tempfile::tempdir()?;
+        let transaction = tokio::select! {
+            _ = cancel.cancelled() => return Ok(false),
+            transaction = state.pool.begin_with("BEGIN IMMEDIATE") => transaction?,
         };
-        let mut output =
-            tokio::fs::File::create(database_files.path().join(name)).await?;
-        loop {
-            if cancel.is_cancelled() {
-                return Ok(false);
+        for name in ["app.db", "app.db-wal", "app.db-shm", "app.db-journal"] {
+            let source = directories.settings_dir.join(name);
+            let mut input = match tokio::fs::File::open(&source).await {
+                Ok(file) => file,
+                Err(error)
+                    if name != "app.db"
+                        && error.kind() == std::io::ErrorKind::NotFound =>
+                {
+                    continue;
+                }
+                Err(error) => {
+                    return Err(IOError::with_path(error, &source).into());
+                }
+            };
+            let mut output =
+                tokio::fs::File::create(database_files.path().join(name))
+                    .await?;
+            loop {
+                if cancel.is_cancelled() {
+                    return Ok(false);
+                }
+                let count = input.read(&mut buffer).await?;
+                if count == 0 {
+                    break;
+                }
+                output.write_all(&buffer[..count]).await?;
             }
-            let count = input.read(&mut buffer).await?;
-            if count == 0 {
-                break;
-            }
-            output.write_all(&buffer[..count]).await?;
+            output.flush().await?;
         }
-        output.flush().await?;
-    }
-    transaction.rollback().await?;
+        transaction.rollback().await?;
+        Some(database_files)
+    } else {
+        None
+    };
 
     tokio::task::spawn_blocking(move || -> crate::Result<bool> {
         let parent = export_path.parent().ok_or_else(|| {
@@ -94,13 +119,15 @@ pub async fn export_debug_info(
                 .unwrap_or_else(|_| export_path.clone()),
         ];
         let mut files = Vec::new();
-        collect_files(
-            &mut files,
-            database_files.path(),
-            "database",
-            &excluded_paths,
-            &cancel,
-        )?;
+        if let Some(database_files) = database_files {
+            collect_files(
+                &mut files,
+                database_files.path(),
+                "database",
+                &excluded_paths,
+                &cancel,
+            )?;
+        }
         if let Some(logs_dir) = directories.launcher_logs_dir() {
             collect_files(
                 &mut files,

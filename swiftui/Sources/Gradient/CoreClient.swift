@@ -48,7 +48,13 @@ actor CoreClient {
         let executable = environment["GRADIENT_CORE"].map { URL(fileURLWithPath: $0) } ?? embedded
         guard let executable else { throw CoreError(tr("Вкажіть шлях до ядра в GRADIENT_CORE.")) }
 
+        var childEnvironment = environment
+        if childEnvironment["THESEUS_DB_BACKUP_DIR"] == nil,
+           let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            childEnvironment["THESEUS_DB_BACKUP_DIR"] = support.appendingPathComponent("Gradient/Backups/app-db").path
+        }
         let child = Process()
+        child.environment = childEnvironment
         let toCore = Pipe()
         let fromCore = Pipe()
         child.executableURL = executable

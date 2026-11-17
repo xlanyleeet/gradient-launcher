@@ -11,6 +11,7 @@ use theseus::{
 
 mod discover;
 mod skin;
+mod preferences;
 mod updates;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -123,6 +124,10 @@ enum Request {
     },
     SaveLaunchSettings {
         values: LaunchSettings,
+    },
+    Preferences { request: preferences::Request },
+    SetDiscordPresence {
+        enabled: bool,
     },
     GameVersions,
     CreateProfile {
@@ -256,6 +261,8 @@ struct LaunchSettings {
     width: u16,
     height: u16,
     arguments: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    discord_rpc: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -372,6 +379,10 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 SkinVariant::Classic => theseus::minecraft_skins::MinecraftSkinVariant::Classic,
                 SkinVariant::Slim => theseus::minecraft_skins::MinecraftSkinVariant::Slim,
             };
+            if let Some(id) = skin::active_offline_account().await? {
+                skin::save_offline(id, &bytes, matches!(variant, theseus::minecraft_skins::MinecraftSkinVariant::Slim))?;
+                return Ok(Value::Null);
+            }
             let cape = Box::pin(theseus::minecraft_skins::get_available_capes())
                 .await?.into_iter().find(|cape| cape.is_equipped);
             Box::pin(theseus::minecraft_skins::add_and_equip_custom_skin(bytes.into(), variant, cape)).await?;
@@ -382,6 +393,10 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
         Request::PreviewSkin { path, variant } =>
             skin::preview(&skin::read_texture(&path)?, matches!(variant, SkinVariant::Slim))?,
         Request::ResetSkin => {
+            if let Some(id) = skin::active_offline_account().await? {
+                skin::reset_offline(id)?;
+                return Ok(Value::Null);
+            }
             Box::pin(theseus::minecraft_skins::unequip_skin()).await?;
             Box::pin(theseus::minecraft_skins::flush_pending_skin_change()).await?;
             Value::Null
@@ -456,6 +471,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 width: settings.game_resolution.0,
                 height: settings.game_resolution.1,
                 arguments: settings.extra_launch_args,
+                discord_rpc: Some(settings.discord_rpc),
             })
         }
         Request::JavaRuntimes => {
@@ -521,6 +537,11 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             theseus::settings::set(settings).await?;
             Value::Null
         }
+        Request::Preferences { request } => Box::pin(preferences::handle(request)).await?,
+        Request::SetDiscordPresence { enabled } => {
+            theseus::settings::set_discord_presence(enabled).await?;
+            Value::Null
+        }
         Request::GameVersions => {
             let manifest = theseus::metadata::get_minecraft_versions().await?;
             json!(manifest.versions.into_iter()
@@ -563,8 +584,11 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             let selected = minecraft_auth::get_default_user().await?;
             json!(minecraft_auth::users().await?.into_iter().map(|account| {
                 let profile = account.offline_profile;
-                json!({ "id": profile.id, "name": profile.name, "selected": selected == Some(profile.id),
-                    "avatar_url": (!account.access_token.is_empty()).then(|| format!("https://mc-heads.net/avatar/{}/48", profile.id)) })
+                let is_selected = selected == Some(profile.id);
+                let offline = skin::is_offline(&account.access_token, &account.refresh_token);
+                let avatar_png = if is_selected && offline { skin::offline_avatar(profile.id).ok().flatten() } else { None };
+                json!({ "id": profile.id, "name": profile.name, "selected": is_selected, "avatar_png": avatar_png,
+                    "avatar_url": (!offline).then(|| format!("https://mc-heads.net/avatar/{}/48", profile.id)) })
             }).collect::<Vec<_>>())
         }
         Request::UseAccount { id } => {
@@ -586,6 +610,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                     "version": entry.applied_content_set.game_version,
                     "loader": entry.applied_content_set.loader,
                     "last_played": profile.last_played.map(|date| date.format("%Y-%m-%d").to_string()),
+                    "play_seconds": profile.submitted_time_played.saturating_add(profile.recent_time_played),
                     "running": running.iter().any(|game| game.instance_id == profile.id),
                     "quarantined": entry.quarantined,
                 })

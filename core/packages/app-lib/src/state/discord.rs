@@ -17,7 +17,10 @@ impl DiscordGuard {
     /// Initialize discord IPC client, and attempt to connect to it
     /// If it fails, it will still return a DiscordGuard, but the client will be unconnected
     pub fn init() -> crate::Result<DiscordGuard> {
-        let dipc = DiscordIpcClient::new("1123683254248148992");
+        let application_id = option_env!("GRADIENT_DISCORD_APPLICATION_ID")
+            .filter(|id| id.parse::<u64>().is_ok_and(|value| value > 0))
+            .unwrap_or("1123683254248148992");
+        let dipc = DiscordIpcClient::new(application_id);
 
         Ok(DiscordGuard {
             client: Arc::new(RwLock::new(dipc)),
@@ -73,11 +76,7 @@ impl DiscordGuard {
         let activity = Activity::new()
             .details("Gradient Launcher")
             .state(msg)
-            .assets(
-                Assets::new()
-                    .large_image("modrinth_simple")
-                    .large_text("Gradient Launcher"),
-            );
+            .assets(Assets::new().large_text("Gradient Launcher"));
 
         // Attempt to set the activity
         // If the existing connection fails, attempt to reconnect and try again
@@ -102,8 +101,7 @@ impl DiscordGuard {
         &self,
         reconnect_if_fail: bool,
     ) -> crate::Result<()> {
-        // Attempt to connect if not connected. Do not continue if it fails, as the client.clear_activity can panic if it never was connected
-        if !self.retry_if_not_ready().await {
+        if !self.connected.load(std::sync::atomic::Ordering::Relaxed) {
             return Ok(());
         }
 

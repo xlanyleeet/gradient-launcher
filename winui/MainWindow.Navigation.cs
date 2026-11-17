@@ -27,6 +27,11 @@ public sealed partial class MainWindow
 
     private async Task LoadQuickPlay()
     {
+        if (extraPreferences?.show_jump_in == false)
+        {
+            QuickSection.Visibility = Visibility.Collapsed;
+            return;
+        }
         var entries = await core.Call<QuickEntry[]>(new { method = "quick_play" });
         QuickPlayCards.ItemsSource = entries.Select(entry => entry with
         {
@@ -56,6 +61,8 @@ public sealed partial class MainWindow
             await OpenDiscover();
         else if (Equals(args.InvokedItemContainer, SettingsNavigation))
             await OpenSettings();
+        else if (Equals(args.InvokedItemContainer, SkinNavigation))
+            ManageSkin(sender, null!);
         else if (Equals(args.InvokedItemContainer, WhatsNewNavigation))
             await ShowWhatsNew();
         else if (Equals(args.InvokedItemContainer, AddProfileNavigation))

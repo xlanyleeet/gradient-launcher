@@ -4558,15 +4558,17 @@ dependencies = [
 
 [[package]]
 name = "gradient-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "image",
  "reqwest 0.12.24",
  "serde",
  "serde_json",
+ "tempfile",
  "theseus",
  "tokio",
+ "tokio-util",
  "url",
  "uuid 1.23.3",
 ]
