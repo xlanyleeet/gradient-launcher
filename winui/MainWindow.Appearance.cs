@@ -1,6 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Input;
+using Windows.Foundation;
+using Windows.Graphics;
 using Windows.UI;
 using Windows.UI.ViewManagement;
 using static Gradient.InterfaceText;
@@ -12,15 +15,32 @@ public sealed partial class MainWindow
     private InterfacePreferences appearance = InterfacePreferences.Load();
     private int SidebarLimit => Math.Clamp(appearance.SidebarProfiles, 1, 30);
 
-    private void TitleBarRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ResizeTitleBarSearch();
+    private RectInt32[] titleBarInputRegions = [];
 
-    private void ResizeTitleBarSearch()
+    private void UpdateTitleBar()
     {
-        if (Layout.XamlRoot is not { } root) return;
-        var captionInset = (AppWindow.TitleBar.LeftInset + AppWindow.TitleBar.RightInset) / root.RasterizationScale;
-        // Leave room for the menu, back button, app icon, account and window drag area.
-        var available = Layout.ActualWidth - captionInset - 240;
-        Search.Width = Math.Clamp(available * 0.70, 0, 760);
+        if (closed || Layout.XamlRoot is not { } root) return;
+        var scale = root.RasterizationScale;
+        var left = AppWindow.TitleBar.LeftInset / scale;
+        var right = AppWindow.TitleBar.RightInset / scale;
+        if (CaptionLeftSpace.Width.Value != left) CaptionLeftSpace.Width = new GridLength(left);
+        if (CaptionRightSpace.Width.Value != right) CaptionRightSpace.Width = new GridLength(right);
+
+        var regions = new List<RectInt32>(4);
+        foreach (var element in new FrameworkElement[] { PaneButton, BackButton, Search, AccountsButton })
+        {
+            if (element.Visibility != Visibility.Visible || element.ActualWidth <= 0 || element.ActualHeight <= 0) continue;
+            var bounds = element.TransformToVisual(Layout).TransformBounds(new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+            var x = (int)Math.Ceiling(Math.Max(left, bounds.Left) * scale);
+            var end = (int)Math.Floor(Math.Min(Layout.ActualWidth - right, bounds.Right) * scale);
+            if (end <= x) continue;
+            regions.Add(new RectInt32(x, (int)Math.Floor(bounds.Top * scale), end - x,
+                (int)Math.Ceiling(bounds.Bottom * scale) - (int)Math.Floor(bounds.Top * scale)));
+        }
+        if (titleBarInputRegions.SequenceEqual(regions)) return;
+        titleBarInputRegions = regions.ToArray();
+        InputNonClientPointerSource.GetForWindowId(AppWindow.Id)
+            .SetRegionRects(NonClientRegionKind.Passthrough, titleBarInputRegions);
     }
 
     private void InitializeAppearance()

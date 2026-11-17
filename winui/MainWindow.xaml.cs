@@ -43,7 +43,14 @@ public sealed partial class MainWindow : Window
         Status.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) => LibraryStatus.Text = Status.Text);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
-        Layout.SizeChanged += (_, _) => ResizeTitleBarSearch();
+        AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
+        WindowTitleBar.LayoutUpdated += (_, _) => UpdateTitleBar();
+        BackButton.PointerEntered += (_, _) => AnimatedIcon.SetState(BackArrow, "PointerOver");
+        BackButton.PointerExited += (_, _) => AnimatedIcon.SetState(BackArrow, "Normal");
+        BackButton.AddHandler(UIElement.PointerPressedEvent,
+            new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => AnimatedIcon.SetState(BackArrow, "Pressed")), true);
+        BackButton.AddHandler(UIElement.PointerReleasedEvent,
+            new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => AnimatedIcon.SetState(BackArrow, "Normal")), true);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Launcher.ico"));
         Navigation.SelectedItem = LibraryNavigation;
         ready = true;
@@ -60,10 +67,7 @@ public sealed partial class MainWindow : Window
     private async void Start(object sender, RoutedEventArgs e)
     {
         Layout.Loaded -= Start;
-        var root = Layout.XamlRoot;
-        root.Changed += TitleBarRootChanged;
-        Closed += (_, _) => root.Changed -= TitleBarRootChanged;
-        ResizeTitleBarSearch();
+        UpdateTitleBar();
         await Run(RefreshAccountAvatar);
         await Run(Update);
         await Run(LoadQuickPlay);
