@@ -68,6 +68,7 @@ impl Kind {
 #[serde(tag = "action", rename_all = "snake_case")]
 pub(super) enum Request {
     Search {
+        source: Option<String>,
         query: String,
         kind: Kind,
         profile: Option<String>,
@@ -219,6 +220,7 @@ async fn installed_mod(
 pub(super) async fn handle(request: Request) -> super::Result<Value> {
     Ok(match request {
         Request::Search {
+            source,
             query,
             kind,
             profile,
@@ -227,11 +229,22 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
             game_version,
             loader,
         } => {
-            let target = target(&kind, profile).await?;
             let offset = offset
                 .map(|offset| offset.parse::<u32>())
                 .transpose()?
                 .unwrap_or(0);
+            if source.as_deref() == Some("curseforge") {
+                return Box::pin(search_curseforge(
+                    &query,
+                    kind,
+                    offset,
+                    sort,
+                    game_version,
+                    loader,
+                ))
+                .await;
+            }
+            let target = target(&kind, profile).await?;
             if kind == Kind::Server {
                 return Box::pin(search_servers(&query, offset, sort)).await;
             }
@@ -307,14 +320,21 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                 return Err("Modrinth не повернув результати пошуку.".into());
             };
             let mut installed = std::collections::HashSet::new();
-            if kind == Kind::Modpack && theseus::settings::get().await?.hide_installed_modpacks {
+            if kind == Kind::Modpack
+                && theseus::settings::get().await?.hide_installed_modpacks
+            {
                 for profile in instance::list().await? {
-                    if let data::InstanceLink::ModrinthModpack { project_id, .. } = profile.link {
+                    if let data::InstanceLink::ModrinthModpack {
+                        project_id,
+                        ..
+                    } = profile.link
+                    {
                         installed.insert(project_id);
                     }
                 }
             }
-            let next_offset = offset.saturating_add(results.result.hits.len() as u32);
+            let next_offset =
+                offset.saturating_add(results.result.hits.len() as u32);
             let hits: Vec<_> = results.result.hits.into_iter()
                 .filter(|hit| !installed.contains(&hit.project_id))
                 .map(|hit| json!({
@@ -364,14 +384,24 @@ pub(super) async fn handle(request: Request) -> super::Result<Value> {
                 .find(|image| image.featured)
                 .or_else(|| project.gallery.first());
             let body: String = project.body.chars().take(32_768).collect();
+            fn original<'a>(thumbnail: &'a str, raw: &'a str) -> &'a str {
+                if url::Url::parse(raw).is_ok_and(|url| url.scheme() == "https")
+                {
+                    raw
+                } else {
+                    thumbnail
+                }
+            }
             json!({
                 "description": project.description,
                 "body": body,
                 "license": project.license.name,
+                "license_id": project.license.id,
                 "downloads": project.downloads,
                 "updated": project.updated.format("%Y-%m-%d").to_string(),
                 "url": url.as_str(),
-                "gallery": gallery.map(|image| &image.url),
+                "gallery": gallery.map(|image| original(&image.url, &image.raw_url)),
+                "gallery_originals": project.gallery.iter().take(12).map(|image| original(&image.url, &image.raw_url)).collect::<Vec<_>>(),
                 "gallery_images": project.gallery.iter().take(12).map(|image| &image.url).collect::<Vec<_>>(),
                 "icon": project.icon_url,
             })
@@ -565,4 +595,129 @@ mod tests {
         assert!(!Kind::DataPack.matches_project("mod", &["fabric".into()]));
         assert!(!Kind::ResourcePack.matches_project("mod", &loaders));
     }
+}
+
+async fn search_curseforge(
+    query: &str,
+    kind: Kind,
+    offset: u32,
+    sort: Option<Sort>,
+    version: Option<String>,
+    loader: Option<data::ModLoader>,
+) -> super::Result<Value> {
+    #[derive(Deserialize)]
+    struct Page {
+        data: Vec<Project>,
+        pagination: Pagination,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Pagination {
+        result_count: u32,
+        total_count: u32,
+    }
+
+    #[derive(Deserialize)]
+    struct Project {
+        id: u32,
+        name: String,
+        summary: String,
+        authors: Vec<Author>,
+        logo: Option<Logo>,
+        links: Links,
+    }
+
+    #[derive(Deserialize)]
+    struct Author {
+        name: String,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Logo {
+        thumbnail_url: String,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Links {
+        website_url: String,
+    }
+
+    const PAGE_SIZE: u32 = 20;
+    const LIMIT: u32 = 10_000;
+    let class_id = match kind {
+        Kind::Mod => 6,
+        Kind::Modpack => 4471,
+        _ => {
+            return Err(
+                "CurseForge supports mods and modpacks in this catalog.".into(),
+            );
+        }
+    };
+    if offset > LIMIT - PAGE_SIZE {
+        return Err("CurseForge search pagination limit reached.".into());
+    }
+    let key = std::env::var("CURSEFORGE_API_KEY")
+        .ok()
+        .filter(|key| !key.trim().is_empty())
+        .ok_or(
+            "Set CURSEFORGE_API_KEY and restart Gradient to use CurseForge.",
+        )?;
+    let sort_field = match sort {
+        Some(Sort::Downloads) => 6,
+        Some(Sort::Newest) => 11,
+        Some(Sort::Updated) => 3,
+        _ if query.trim().is_empty() => 2,
+        _ => 1,
+    };
+    static CLIENT: std::sync::LazyLock<reqwest::Client> =
+        std::sync::LazyLock::new(reqwest::Client::new);
+    let mut request = CLIENT
+        .get("https://api.curseforge.com/v1/mods/search")
+        .timeout(std::time::Duration::from_secs(15))
+        .header("x-api-key", key.trim())
+        .query(&[
+            ("gameId", 432),
+            ("classId", class_id),
+            ("index", offset),
+            ("pageSize", PAGE_SIZE),
+            ("sortField", sort_field),
+        ])
+        .query(&[("searchFilter", query.trim()), ("sortOrder", "desc")]);
+    if let Some(version) = version
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        request = request.query(&[("gameVersion", version)]);
+    }
+    if let Some(loader) = loader {
+        let loader = match loader.as_str() {
+            "forge" => 1,
+            "fabric" => 4,
+            "quilt" => 5,
+            "neoforge" => 6,
+            _ => return Err("Unsupported CurseForge mod loader.".into()),
+        };
+        request = request.query(&[("modLoaderType", loader)]);
+    }
+    let response = request.send().await?;
+    if matches!(response.status().as_u16(), 401 | 403) {
+        return Err("CurseForge rejected the API key or denied access.".into());
+    }
+    let page: Page = response.error_for_status()?.json().await?;
+    let next = offset.saturating_add(page.pagination.result_count);
+    Ok(json!({
+        "hits": page.data.into_iter().map(|project| json!({
+            "id": project.id.to_string(),
+            "name": project.name,
+            "description": project.summary,
+            "author": project.authors.into_iter().map(|author| author.name).collect::<Vec<_>>().join(", "),
+            "icon": project.logo.map(|logo| logo.thumbnail_url),
+            "url": project.links.website_url,
+        })).collect::<Vec<_>>(),
+        "next_offset": (next > offset && next < page.pagination.total_count && next <= LIMIT - PAGE_SIZE).then_some(next),
+    }))
 }

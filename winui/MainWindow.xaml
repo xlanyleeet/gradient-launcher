@@ -49,9 +49,15 @@
                                 <MenuFlyoutItem.Icon><SymbolIcon Symbol="Contact"/></MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator/>
-                            <MenuFlyoutItem Text="{local:Translate Key='Увійти в Microsoft'}" Click="MicrosoftLogin"/>
-                            <MenuFlyoutItem Text="{local:Translate Key='Додати офлайн-акаунт'}" Click="Login"/>
-                            <MenuFlyoutItem Text="{local:Translate Key='Скін Minecraft'}" Click="ManageSkin"/>
+                            <MenuFlyoutItem Text="{local:Translate Key='Увійти в Microsoft'}" Click="MicrosoftLogin">
+                                <MenuFlyoutItem.Icon><SymbolIcon Symbol="Permissions"/></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Translate Key='Додати офлайн-акаунт'}" Click="Login">
+                                <MenuFlyoutItem.Icon><SymbolIcon Symbol="AddFriend"/></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Translate Key='Скін Minecraft'}" Click="ManageSkin">
+                                <MenuFlyoutItem.Icon><SymbolIcon Symbol="Edit"/></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
@@ -68,8 +74,8 @@
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="LibraryNavigation" Content="{local:Translate Key='Бібліотека'}" Icon="Library"
                                     ToolTipService.ToolTip="{local:Translate Key='Бібліотека'}"/>
-                <NavigationViewItem x:Name="DiscoverNavigation" Content="{local:Translate Key='Каталог Modrinth'}"
-                                    ToolTipService.ToolTip="{local:Translate Key='Каталог Modrinth'}">
+                <NavigationViewItem x:Name="DiscoverNavigation" Content="{local:Translate Key='Каталог'}"
+                                    ToolTipService.ToolTip="{local:Translate Key='Каталог'}">
                     <NavigationViewItem.Icon>
                         <ImageIcon Width="20" Height="20">
                             <ImageIcon.Source>
@@ -184,6 +190,7 @@
                                                 <MenuFlyoutItem Text="{local:Translate Key='Змінити іконку'}" Click="ChangeProfileIcon"/>
                                                 <MenuFlyoutItem Text="{local:Translate Key='Java та пам’ять'}" Click="EditProfileLaunchSettings"/>
                                                 <MenuFlyoutItem Text="{local:Translate Key='Групи профілю'}" Click="ProfileGroups"/>
+                                                <MenuFlyoutItem x:Name="UpdateModpackItem" Text="{local:Translate Key='Оновити модпак'}" Click="UpdateModpack" Visibility="Collapsed"/>
                                                 <MenuFlyoutItem Text="{local:Translate Key='Дублювати'}" Click="DuplicateProfile"/>
                                                 <MenuFlyoutItem Text="{local:Translate Key='Експортувати .mrpack'}" Click="ExportProfile"/>
                                                 <MenuFlyoutItem Text="{local:Translate Key='Відкрити папку профілю'}" Click="OpenProfileFolder"/>
@@ -205,7 +212,35 @@
                             <Pivot x:Name="Details" SelectionChanged="DetailChanged">
                                 <PivotItem x:Name="ContentTab" Header="{local:Translate Key='Контент'}">
                                     <StackPanel Spacing="8">
-                                        <Button x:Name="AddModButton" Content="{local:Translate Key='+  Додати .jar'}" Click="AddMod" IsEnabled="False"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <DropDownButton x:Name="AddModButton" Content="{local:Translate Key='Додати файл'}" IsEnabled="False">
+                                                <DropDownButton.Flyout>
+                                                    <MenuFlyout>
+                                                        <MenuFlyoutItem Text="{local:Translate Key='Мод (.jar)'}" Tag="mod" Click="AddContentFile"/>
+                                                        <MenuFlyoutItem Text="{local:Translate Key='Пакет ресурсів (.zip)'}" Tag="resourcepack" Click="AddContentFile"/>
+                                                        <MenuFlyoutItem Text="{local:Translate Key='Шейдер (.zip)'}" Tag="shaderpack" Click="AddContentFile"/>
+                                                        <MenuFlyoutItem Text="{local:Translate Key='Пакет даних (.zip)'}" Tag="datapack" Click="AddContentFile"/>
+                                                    </MenuFlyout>
+                                                </DropDownButton.Flyout>
+                                            </DropDownButton>
+                                            <Button x:Name="UpdateAllContentButton" Content="{local:Translate Key='Оновити все'}" Click="UpdateAllContent" Visibility="Collapsed"/>
+                                        </StackPanel>
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="ContentSearch" PlaceholderText="{local:Translate Key='Пошук контенту'}" TextChanged="ChangeContentSearch"/>
+                                            <ComboBox x:Name="ContentKindFilter" Grid.Column="1" SelectedIndex="0" SelectionChanged="ChangeContentKindFilter"
+                                                      AutomationProperties.Name="{local:Translate Key='Фільтр контенту'}">
+                                                <ComboBoxItem Content="{local:Translate Key='Усі'}" Tag="all"/>
+                                                <ComboBoxItem Content="{local:Translate Key='Моди'}" Tag="mod"/>
+                                                <ComboBoxItem Content="{local:Translate Key='Шейдери'}" Tag="shaderpack"/>
+                                                <ComboBoxItem Content="{local:Translate Key='Пакети ресурсів'}" Tag="resourcepack"/>
+                                                <ComboBoxItem Content="{local:Translate Key='Пакети даних'}" Tag="datapack"/>
+                                                <ComboBoxItem Content="{local:Translate Key='Є оновлення'}" Tag="updates"/>
+                                            </ComboBox>
+                                        </Grid>
                                         <CheckBox x:Name="ShowPackContent" Content="{local:Translate Key='Показувати стандартний контент'}"
                                                   Checked="ChangeContentFilter" Unchecked="ChangeContentFilter"/>
                                         <StackPanel x:Name="ContentRows" Spacing="8"/>
@@ -268,10 +303,6 @@
                                 </Style>
                             </StackPanel.Resources>
                             <TextBlock Text="{local:Translate Key='Налаштування'}" Style="{StaticResource TitleTextBlockStyle}"/>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="{local:Translate Key='Поведінка'}" Click="EditExtraPreferences"/>
-                                <Button Content="{local:Translate Key='Сховище й діагностика'}" Click="OpenStorageSettings"/>
-                            </StackPanel>
                             <Border Style="{StaticResource SettingsCard}">
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="{local:Translate Key='Вигляд і мова'}" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,2"/>
@@ -313,6 +344,10 @@
                                         <TextBox x:Name="MemorySetting" Grid.Column="1" Width="144" VerticalAlignment="Center"
                                                  AutomationProperties.Name="{local:Translate Key='Максимум пам’яті (МіБ)'}" InputScope="Number"/>
                                     </Grid>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+                                        <TextBlock x:Name="MemoryHint" Visibility="Collapsed" Opacity="0.75" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        <Button x:Name="RecommendedMemoryButton" Content="{local:Translate Key='Рекомендовано'}" Click="ApplyRecommendedMemory" Visibility="Collapsed"/>
+                                    </StackPanel>
                                     <Grid ColumnSpacing="12" MinHeight="44">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <TextBlock Text="{local:Translate Key='На весь екран'}" TextWrapping="Wrap" VerticalAlignment="Center"/>
@@ -356,6 +391,10 @@
                                     <TextBlock x:Name="SettingsStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                                 </StackPanel>
                             </Border>
+                            <Expander x:Name="BehaviorSection" Header="{local:Translate Key='Поведінка'}"
+                                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"/>
+                            <Expander x:Name="StorageSection" Header="{local:Translate Key='Сховище й діагностика'}"
+                                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"/>
                             <Border Style="{StaticResource SettingsCard}">
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="{local:Translate Key='Інтеграції'}" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,2"/>
@@ -395,16 +434,31 @@
                         </StackPanel>
                     </Grid>
                 </ScrollViewer>
-                <ScrollViewer x:Name="ProjectPage" Visibility="Collapsed"
-                              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-                    <StackPanel x:Name="ProjectContent" Padding="24" Spacing="20">
-                        <StackPanel.ChildrenTransitions>
-                            <TransitionCollection>
-                                <EntranceThemeTransition FromVerticalOffset="18" IsStaggeringEnabled="False"/>
-                            </TransitionCollection>
-                        </StackPanel.ChildrenTransitions>
-                    </StackPanel>
-                </ScrollViewer>
+                <Grid x:Name="ProjectPage" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+                    <ScrollViewer x:Name="ProjectScroll" ViewChanged="ProjectScrollChanged">
+                        <StackPanel x:Name="ProjectContent" Padding="24" Spacing="20"/>
+                    </ScrollViewer>
+                    <Border x:Name="ProjectStickyHeader" Visibility="Collapsed" VerticalAlignment="Top"
+                            Margin="24,8,24,0" Padding="12" CornerRadius="10" BorderThickness="1"
+                            Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Image x:Name="ProjectStickyIcon" Width="44" Height="44"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <Grid ColumnSpacing="4" HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="ProjectStickyTitle" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                    <ContentControl x:Name="ProjectStickyLink" Grid.Column="1" VerticalAlignment="Center"/>
+                                </Grid>
+                                <TextBlock x:Name="ProjectStickySubtitle" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="ProjectStickyStatus" Style="{StaticResource CaptionTextBlockStyle}" Visibility="Collapsed"
+                                           TextTrimming="CharacterEllipsis" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                            <ContentControl x:Name="ProjectStickyAction" Grid.Column="2" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                </Grid>
                 <Grid x:Name="DiscoverPage" Visibility="Collapsed" Padding="24"
                       Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" RowSpacing="12">
                     <Grid.RowDefinitions>
@@ -413,7 +467,14 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Text="{local:Translate Key='Каталог Modrinth'}" Style="{StaticResource TitleTextBlockStyle}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="14">
+                        <TextBlock Text="{local:Translate Key='Каталог'}" Style="{StaticResource TitleTextBlockStyle}"/>
+                        <ComboBox x:Name="DiscoverSource" AutomationProperties.Name="{local:Translate Key='Джерело каталогу'}"
+                                  SelectedIndex="0" SelectionChanged="DiscoverSourceChanged">
+                            <ComboBoxItem Content="Modrinth"/>
+                            <ComboBoxItem Content="CurseForge"/>
+                        </ComboBox>
+                    </StackPanel>
                     <StackPanel Grid.Row="1" Spacing="8">
                         <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto"
                                       VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
@@ -448,7 +509,7 @@
                                             QuerySubmitted="DiscoverSearch"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                                 <Button Content="{local:Translate Key='Пошук'}" Click="DiscoverSearchClick"/>
-                                <Button Content="{local:Translate Key='Відкрити посилання'}" Click="OpenLinkClick"/>
+                                <Button x:Name="DiscoverOpenLink" Content="{local:Translate Key='Відкрити посилання'}" Click="OpenLinkClick"/>
                             </StackPanel>
                         </Grid>
                         <Expander Header="{local:Translate Key='Фільтри та сортування'}" HorizontalAlignment="Stretch">
@@ -495,9 +556,11 @@
                         </ListView.ItemTemplate>
                     </ListView>
                     <StackPanel Grid.Row="3" Spacing="8">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="DiscoverBack" Content="{local:Translate Key='Попередня сторінка'}" IsEnabled="False" Click="DiscoverPrevious"/>
-                            <Button x:Name="DiscoverMore" Content="{local:Translate Key='Наступна сторінка'}" IsEnabled="False" Click="DiscoverNext"/>
+                        <StackPanel x:Name="DiscoverPagination" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Visibility="Collapsed">
+                            <Button x:Name="DiscoverBack" MinWidth="36" Visibility="Collapsed" Click="DiscoverPrevious"/>
+                            <TextBlock x:Name="DiscoverCurrentPage" MinWidth="36" TextAlignment="Center" VerticalAlignment="Center"
+                                       FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite"/>
+                            <Button x:Name="DiscoverMore" MinWidth="36" Visibility="Collapsed" Click="DiscoverNext"/>
                         </StackPanel>
                         <TextBlock x:Name="DiscoverStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>

@@ -629,8 +629,19 @@ async fn minecraft_tokens(
     let mut tokens = Vec::with_capacity(rows.len() * 2);
 
     for row in rows {
-        tokens.push(row.try_get("access_token")?);
-        tokens.push(row.try_get("refresh_token")?);
+        let access_raw: String = row.try_get("access_token")?;
+        let access_plain = crate::state::token_crypto::unprotect_token(&access_raw);
+        if access_plain != access_raw {
+            tokens.push(access_plain);
+        }
+        tokens.push(access_raw);
+
+        let refresh_raw: String = row.try_get("refresh_token")?;
+        let refresh_plain = crate::state::token_crypto::unprotect_token(&refresh_raw);
+        if refresh_plain != refresh_raw {
+            tokens.push(refresh_plain);
+        }
+        tokens.push(refresh_raw);
     }
 
     Ok(tokens)

@@ -17,6 +17,7 @@ public sealed partial class MainWindow
 
     private ContentDialog Editor(string title, object content, string action) => new()
     {
+        RequestedTheme = Layout.ActualTheme,
         XamlRoot = Layout.XamlRoot,
         Title = title,
         Content = content,
@@ -188,25 +189,87 @@ public sealed partial class MainWindow
     private async void CreateProfile(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         ShowLibrary();
-        var versions = await core.Call<string[]>(new { method = "game_versions" });
+        var versions = await core.Call<string[]>(new { method = "game_versions", include_snapshots = false });
         var name = new TextBox { Header = Tr("Назва"), PlaceholderText = Tr("Мій профіль") };
-        var version = new ComboBox { Header = "Minecraft", ItemsSource = versions, SelectedIndex = versions.Length == 0 ? -1 : 0 };
+        var snapshots = new CheckBox { Content = Tr("Показувати знімки (Snapshots)") };
+        var version = new ComboBox { Header = "Minecraft", ItemsSource = versions, SelectedIndex = versions.Length == 0 ? -1 : 0, HorizontalAlignment = HorizontalAlignment.Stretch };
         var loaders = new[] { "Vanilla", "Fabric", "Forge", "NeoForge", "Quilt" };
-        var loader = new ComboBox { Header = Tr("Завантажувач"), ItemsSource = loaders, SelectedIndex = 0 };
+        var loader = new ComboBox { Header = Tr("Завантажувач"), ItemsSource = loaders, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var loaderVersion = new ComboBox
+        {
+            Header = Tr("Версія завантажувача"),
+            ItemsSource = new[] { Tr("Автоматично") },
+            SelectedIndex = 0,
+            IsEnabled = false,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
         var form = new StackPanel { Spacing = 12 };
         form.Children.Add(name);
+        form.Children.Add(snapshots);
         form.Children.Add(version);
         form.Children.Add(loader);
+        form.Children.Add(loaderVersion);
         var dialog = Editor(Tr("Новий профіль"), form, Tr("Створити"));
         void Validate() => dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(name.Text) && version.SelectedItem is string;
+
+        async Task ReloadLoaderVersions()
+        {
+            var selectedLoader = ((string)loader.SelectedItem).ToLowerInvariant();
+            var selectedGame = version.SelectedItem as string;
+            if (selectedLoader == "vanilla" || string.IsNullOrEmpty(selectedGame))
+            {
+                loaderVersion.ItemsSource = new[] { Tr("Автоматично") };
+                loaderVersion.SelectedIndex = 0;
+                loaderVersion.IsEnabled = false;
+                return;
+            }
+            loaderVersion.IsEnabled = false;
+            try
+            {
+                var items = await core.Call<string[]>(new { method = "loader_versions", loader = selectedLoader, game_version = selectedGame });
+                loaderVersion.ItemsSource = items.Prepend(Tr("Автоматично")).ToArray();
+                loaderVersion.SelectedIndex = 0;
+                loaderVersion.IsEnabled = true;
+            }
+            catch (Exception error)
+            {
+                loaderVersion.ItemsSource = new[] { Tr("Автоматично") };
+                loaderVersion.SelectedIndex = 0;
+                Status.Text = error.Message;
+            }
+        }
+
+        async Task ReloadGameVersions()
+        {
+            try
+            {
+                var current = version.SelectedItem as string;
+                var list = await core.Call<string[]>(new { method = "game_versions", include_snapshots = snapshots.IsChecked == true });
+                version.ItemsSource = list;
+                version.SelectedItem = current is not null && list.Contains(current) ? current : list.FirstOrDefault();
+                Validate();
+                await ReloadLoaderVersions();
+            }
+            catch (Exception error) { Status.Text = error.Message; }
+        }
+
         name.TextChanged += (_, _) => Validate();
-        version.SelectionChanged += (_, _) => Validate();
+        snapshots.Checked += async (_, _) => await ReloadGameVersions();
+        snapshots.Unchecked += async (_, _) => await ReloadGameVersions();
+        version.SelectionChanged += async (_, _) =>
+        {
+            Validate();
+            await ReloadLoaderVersions();
+        };
+        loader.SelectionChanged += async (_, _) => await ReloadLoaderVersions();
         Validate();
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        var chosenLoaderVersion = loaderVersion.SelectedIndex > 0 ? loaderVersion.SelectedItem as string : null;
         await ApplyProfileChange(new
         {
             method = "create_profile", name = name.Text, version = (string)version.SelectedItem,
-            loader = ((string)loader.SelectedItem).ToLowerInvariant()
+            loader = ((string)loader.SelectedItem).ToLowerInvariant(),
+            loader_version = chosenLoaderVersion
         }, Tr("Профіль додано до черги."));
     });
 

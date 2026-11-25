@@ -82,6 +82,16 @@ enum Request {
         id: String,
         path: String,
     },
+    UpdateAllContent {
+        id: String,
+    },
+    ModpackVersions {
+        id: String,
+    },
+    UpdateModpack {
+        id: String,
+        version: String,
+    },
     Files {
         id: String,
         path: String,
@@ -107,6 +117,9 @@ enum Request {
     },
     LaunchSettings,
     JavaRuntimes,
+    DetectJava {
+        major: String,
+    },
     SetJavaRuntime {
         major: String,
         path: PathBuf,
@@ -129,11 +142,20 @@ enum Request {
     SetDiscordPresence {
         enabled: bool,
     },
-    GameVersions,
+    GameVersions {
+        #[serde(default)]
+        include_snapshots: bool,
+    },
+    LoaderVersions {
+        loader: theseus::data::ModLoader,
+        game_version: String,
+    },
     CreateProfile {
         name: String,
         version: String,
         loader: theseus::data::ModLoader,
+        #[serde(default)]
+        loader_version: Option<String>,
     },
     RenameProfile {
         id: String,
@@ -191,6 +213,11 @@ enum Request {
     AddMod {
         id: String,
         path: PathBuf,
+    },
+    AddContent {
+        id: String,
+        path: PathBuf,
+        kind: theseus::data::ProjectType,
     },
     SetContentEnabled {
         id: String,
@@ -263,6 +290,10 @@ struct LaunchSettings {
     arguments: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     discord_rpc: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    system_memory_mib: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recommended_memory_mib: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -441,6 +472,60 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             instance::update_project(&id, &path, None).await?;
             Value::Null
         }
+        Request::UpdateAllContent { id } => {
+            require_stopped(&id).await?;
+            let items = instance::get_content_items(&id, None).await?;
+            let mut updated = 0u32;
+            let mut failed = 0u32;
+            for item in items {
+                if item.has_update
+                    && !item.locked
+                    && item.synced_pack.is_none()
+                    && !item.file_path.is_empty()
+                {
+                    match instance::update_project(&id, &item.file_path, None).await {
+                        Ok(_) => updated += 1,
+                        Err(_) => failed += 1,
+                    }
+                }
+            }
+            json!({ "updated": updated, "failed": failed })
+        }
+        Request::ModpackVersions { id } => {
+            let profile = instance::get(&id).await?.ok_or("Профіль не знайдено.")?;
+            let theseus::data::InstanceLink::ModrinthModpack {
+                project_id,
+                version_id,
+            } = profile.link
+            else {
+                return Err("Профіль не пов’язаний із модпаком Modrinth.".into());
+            };
+            let mut versions = Box::pin(theseus::cache::get_project_versions(
+                &project_id,
+                Some(theseus::data::CacheBehaviour::MustRevalidate),
+            ))
+            .await?
+            .unwrap_or_default();
+            versions.sort_by_key(|v| std::cmp::Reverse(v.date_published));
+            let options: Vec<_> = versions
+                .into_iter()
+                .map(|v| {
+                    json!({
+                        "id": v.id,
+                        "name": v.version_number,
+                        "channel": v.version_type,
+                        "game_versions": v.game_versions,
+                    })
+                })
+                .collect();
+            json!({ "current_id": version_id, "options": options })
+        }
+        Request::UpdateModpack { id, version } => {
+            require_stopped(&id).await?;
+            Box::pin(instance::update_managed_modrinth_version(&id, &version))
+                .await?;
+            Value::Null
+        }
         Request::Files { id, path } => {
             let mut entries = instance::list_instance_files(&id, &path).await?;
             entries.sort_by_cached_key(|entry| (entry.kind != "directory", entry.name.to_lowercase()));
@@ -465,6 +550,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
         Request::Discover { request } => Box::pin(discover::handle(request)).await?,
         Request::LaunchSettings => {
             let settings = theseus::settings::get().await?;
+            let system_memory_kib = theseus::jre::get_max_memory().await.unwrap_or(0);
             json!(LaunchSettings {
                 memory_mib: settings.memory.maximum,
                 fullscreen: settings.force_fullscreen,
@@ -472,6 +558,8 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 height: settings.game_resolution.1,
                 arguments: settings.extra_launch_args,
                 discord_rpc: Some(settings.discord_rpc),
+                system_memory_mib: (system_memory_kib > 0).then_some(system_memory_kib / 1024),
+                recommended_memory_mib: Some(theseus::jre::default_memory_max_mb()),
             })
         }
         Request::JavaRuntimes => {
@@ -479,6 +567,10 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 .into_iter().map(|(_, version)| version).collect();
             versions.sort_by_key(|version| version.parsed_version);
             json!(versions)
+        }
+        Request::DetectJava { major } => {
+            let major = supported_java_major(&major)?;
+            json!(theseus::jre::find_filtered_jres(Some(major)).await?)
         }
         Request::SetJavaRuntime { major, path } => {
             let major = supported_java_major(&major)?;
@@ -542,17 +634,49 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             theseus::settings::set_discord_presence(enabled).await?;
             Value::Null
         }
-        Request::GameVersions => {
+        Request::GameVersions { include_snapshots } => {
             let manifest = theseus::metadata::get_minecraft_versions().await?;
             json!(manifest.versions.into_iter()
-                .filter(|version| version.type_.as_str() == "release")
+                .filter(|version| include_snapshots || version.type_.as_str() == "release")
                 .map(|version| version.id).collect::<Vec<_>>())
         }
-        Request::CreateProfile { name, version, loader } => {
+        Request::LoaderVersions { loader, game_version } => {
+            if loader == theseus::data::ModLoader::Vanilla {
+                return Ok(json!([]));
+            }
+            let manifest = theseus::metadata::get_loader_versions(loader.as_str()).await?;
+            let loaders = if let Some(entry) = manifest.game_versions.iter().find(|v| v.id == game_version) {
+                if !entry.loaders.is_empty() {
+                    entry.loaders.as_slice()
+                } else if let Some(group_id) = entry.version_group.as_deref() {
+                    manifest
+                        .version_groups
+                        .iter()
+                        .find(|group| group.id == group_id)
+                        .map(|group| group.loaders.as_slice())
+                        .unwrap_or(&[])
+                } else {
+                    &[]
+                }
+            } else {
+                manifest
+                    .game_versions
+                    .iter()
+                    .find(|v| !v.loaders.is_empty())
+                    .map(|v| v.loaders.as_slice())
+                    .unwrap_or(&[])
+            };
+            let ids: Vec<_> = loaders.iter().take(100).map(|v| v.id.clone()).collect();
+            json!(ids)
+        }
+        Request::CreateProfile { name, version, loader, loader_version } => {
             let name = name.trim();
             if name.is_empty() { return Err("Введіть назву профілю.".into()); }
+            let loader_version = loader_version
+                .map(|v| v.trim().to_owned())
+                .filter(|v| !v.is_empty());
             install::create_instance(
-                name.to_owned(), version, loader, None, None, None,
+                name.to_owned(), version, loader, loader_version, None, None,
                 theseus::data::InstanceLink::Unmanaged,
             ).await?;
             Value::Null
@@ -582,14 +706,21 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
         }
         Request::Accounts => {
             let selected = minecraft_auth::get_default_user().await?;
-            json!(minecraft_auth::users().await?.into_iter().map(|account| {
-                let profile = account.offline_profile;
+            let mut accounts = Vec::new();
+            for account in minecraft_auth::users().await? {
+                let profile = &account.offline_profile;
                 let is_selected = selected == Some(profile.id);
-                let offline = skin::is_offline(&account.access_token, &account.refresh_token);
-                let avatar_png = if is_selected && offline { skin::offline_avatar(profile.id).ok().flatten() } else { None };
-                json!({ "id": profile.id, "name": profile.name, "selected": is_selected, "avatar_png": avatar_png,
-                    "avatar_url": (!offline).then(|| format!("https://mc-heads.net/avatar/{}/48", profile.id)) })
-            }).collect::<Vec<_>>())
+                let avatar_png = if !is_selected {
+                    None
+                } else if skin::is_offline(&account.access_token, &account.refresh_token) {
+                    skin::offline_avatar(profile.id).ok().flatten()
+                } else {
+                    Box::pin(skin::online_avatar(&account)).await.ok().flatten()
+                };
+                accounts.push(json!({ "id": profile.id, "name": profile.name, "selected": is_selected,
+                    "avatar_png": avatar_png }));
+            }
+            json!(accounts)
         }
         Request::UseAccount { id } => {
             minecraft_auth::set_default_user(id).await?;
@@ -613,6 +744,7 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                     "play_seconds": profile.submitted_time_played.saturating_add(profile.recent_time_played),
                     "running": running.iter().any(|game| game.instance_id == profile.id),
                     "quarantined": entry.quarantined,
+                    "is_modpack": matches!(entry.link, theseus::data::InstanceLink::ModrinthModpack { .. }),
                 })
             }).collect();
             json!(profiles)
@@ -728,6 +860,20 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
                 return Err("Виберіть файл мода .jar.".into());
             }
             instance::add_project_from_path(&id, &path, Some(theseus::data::ProjectType::Mod)).await?;
+            Value::Null
+        }
+        Request::AddContent { id, path, kind } => {
+            require_stopped(&id).await?;
+            let expected_ext = match kind {
+                theseus::data::ProjectType::Mod => "jar",
+                theseus::data::ProjectType::ResourcePack
+                | theseus::data::ProjectType::ShaderPack
+                | theseus::data::ProjectType::DataPack => "zip",
+            };
+            if !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case(expected_ext)) {
+                return Err(format!("Виберіть файл .{expected_ext}.").into());
+            }
+            instance::add_project_from_path(&id, &path, Some(kind)).await?;
             Value::Null
         }
         Request::SetContentEnabled { id, path, action } => {

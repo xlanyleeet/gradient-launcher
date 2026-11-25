@@ -8,17 +8,29 @@ namespace Gradient;
 
 internal sealed class CoreClient : IDisposable
 {
+    private readonly SemaphoreSlim callLock = new(1, 1);
     private Process? process;
 
     public async Task<T> Call<T>(object request)
     {
+        await callLock.WaitAsync();
+        try { return await CallCoreAsync<T>(request); }
+        finally { callLock.Release(); }
+    }
+
+    private async Task<T> CallCoreAsync<T>(object request)
+    {
         if (process?.HasExited == true)
-            Dispose();
+            ResetProcess();
 
         if (process is null)
         {
+#if DEBUG
             var executable = Environment.GetEnvironmentVariable("GRADIENT_CORE")
                 ?? Path.Combine(AppContext.BaseDirectory, "gradient-core.exe");
+#else
+            var executable = Path.Combine(AppContext.BaseDirectory, "gradient-core.exe");
+#endif
             var info = new ProcessStartInfo(executable)
             {
                 UseShellExecute = false,
@@ -41,7 +53,7 @@ internal sealed class CoreClient : IDisposable
             }
             catch
             {
-                Dispose();
+                ResetProcess();
                 throw;
             }
         }
@@ -63,21 +75,28 @@ internal sealed class CoreClient : IDisposable
 
     public async Task StopForUpdateAsync()
     {
-        await Call<JsonElement>(new { method = "prepare_launcher_update" });
-        var child = process!;
+        await callLock.WaitAsync();
         try
         {
-            child.StandardInput.Close();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            await child.WaitForExitAsync(timeout.Token);
+            await CallCoreAsync<JsonElement>(new { method = "prepare_launcher_update" });
+            var child = process!;
+            try
+            {
+                child.StandardInput.Close();
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                await child.WaitForExitAsync(timeout.Token);
+            }
+            finally { ResetProcess(); }
         }
-        finally { Dispose(); }
+        finally { callLock.Release(); }
     }
 
-    public void Dispose()
+    private void ResetProcess()
     {
         process?.StandardInput.Dispose();
         process?.Dispose();
         process = null;
     }
+
+    public void Dispose() => ResetProcess();
 }

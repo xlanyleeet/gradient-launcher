@@ -23,7 +23,7 @@ jobs:
       - id: version
         shell: bash
         run: |
-          version=0.2.0
+          version=0.3.0
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
             if [[ ! "$GITHUB_REF_NAME" =~ ^native-v(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$ ]]; then
               echo "::error::Expected a stable tag of the form native-vMAJOR.MINOR.PATCH"
@@ -54,6 +54,16 @@ jobs:
       - name: Build Rust core
         working-directory: core
         run: cargo build --locked --release -p gradient-core
+      - name: Run Rust security tests
+        working-directory: core
+        shell: pwsh
+        run: |
+          cargo test --locked -p theseus --lib token_crypto
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --locked -p theseus --lib minecraft_auth
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --locked -p gradient-core
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Build WinUI
         run: MSBuild winui/Gradient.WinUI.csproj /restore /p:Platform=x64 /p:Configuration=Release "/p:Version=$env:GRADIENT_NATIVE_VERSION"
       - name: Verify output
@@ -108,15 +118,53 @@ jobs:
           name: gradient-native-release-windows-x64
           path: gradient-native-windows-x64.zip
           if-no-files-found: error
-      - name: Package the Velopack installer and update feed
+      - name: Sign binaries and package the Velopack installer
         shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          dotnet tool install vpk --tool-path "$env:RUNNER_TEMP/vpk" --version 1.2.161
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          & "$env:RUNNER_TEMP/vpk/vpk.exe" pack --packId GradientNative --packVersion $env:GRADIENT_NATIVE_VERSION --packDir 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64' --mainExe Gradient.WinUI.exe --packTitle 'Gradient Launcher' --icon winui/Assets/Launcher.ico --channel win-x64 --runtime win-x64 --framework net8-x64-desktop --outputDir velopack
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          foreach ($pattern in 'releases.win-x64.json', '*-full.nupkg', '*-Setup.exe') {
-            if (!(Get-ChildItem -Path velopack -Filter $pattern -File)) { throw "Missing Velopack output: $pattern" }
+          $output = 'winui/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
+          $pfx = Join-Path $env:RUNNER_TEMP 'windows-signing.pfx'
+          $hasCert = ![string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -and ![string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)
+          try {
+            if ($hasCert) {
+              [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+              $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+              if (!$signtool) { throw 'signtool.exe was not found on the runner.' }
+              foreach ($bin in 'Gradient.WinUI.exe', 'gradient-core.exe') {
+                & $signtool sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 (Join-Path $output $bin)
+                if ($LASTEXITCODE) { exit $LASTEXITCODE }
+              }
+            } else {
+              Write-Host '::notice::Windows Authenticode secrets are not configured; building unsigned binaries and installer.'
+            }
+            dotnet tool install vpk --tool-path "$env:RUNNER_TEMP/vpk" --version 1.2.161
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $vpkArgs = @(
+              'pack',
+              '--packId', 'GradientNative',
+              '--packVersion', $env:GRADIENT_NATIVE_VERSION,
+              '--packDir', $output,
+              '--mainExe', 'Gradient.WinUI.exe',
+              '--packTitle', 'Gradient Launcher',
+              '--icon', 'winui/Assets/Launcher.ico',
+              '--channel', 'win-x64',
+              '--runtime', 'win-x64',
+              '--framework', 'net8-x64-desktop',
+              '--outputDir', 'velopack'
+            )
+            if ($hasCert) {
+              $vpkArgs += @('--signParams', "/f `"$pfx`" /p `"$env:WINDOWS_CERTIFICATE_PASSWORD`" /fd sha256 /tr http://timestamp.digicert.com /td sha256")
+            }
+            & "$env:RUNNER_TEMP/vpk/vpk.exe" @vpkArgs
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            foreach ($pattern in 'releases.win-x64.json', '*-full.nupkg', '*-Setup.exe') {
+              if (!(Get-ChildItem -Path velopack -Filter $pattern -File)) { throw "Missing Velopack output: $pattern" }
+            }
+          } finally {
+            if (Test-Path $pfx) { Remove-Item -Force $pfx }
           }
       - uses: actions/upload-artifact@v6
         with:
@@ -160,6 +208,16 @@ jobs:
       - name: Build Rust core
         working-directory: core
         run: cargo build --locked --release -p gradient-core
+      - name: Run Rust security tests
+        working-directory: core
+        shell: pwsh
+        run: |
+          cargo test --locked -p theseus --lib token_crypto
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --locked -p theseus --lib minecraft_auth
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --locked -p gradient-core
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Package macOS drag-and-drop installer
         shell: bash
         env:

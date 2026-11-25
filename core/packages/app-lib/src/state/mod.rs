@@ -43,6 +43,8 @@ pub use self::discord::*;
 mod minecraft_auth;
 pub use self::minecraft_auth::*;
 
+pub(crate) mod token_crypto;
+
 pub mod minecraft_skins;
 
 mod cache;

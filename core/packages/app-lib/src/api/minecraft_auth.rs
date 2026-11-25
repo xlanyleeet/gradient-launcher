@@ -100,13 +100,42 @@ pub async fn users() -> crate::Result<Vec<Credentials>> {
     Ok(users.into_iter().map(|x| x.1).collect())
 }
 
+fn validate_offline_username(username: &str) -> crate::Result<&str> {
+    let clean_name = username.trim();
+    let valid = (3..=16).contains(&clean_name.len())
+        && clean_name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_');
+    if !valid {
+        return Err(crate::ErrorKind::InputError(
+            "Offline username must be 3-16 characters and contain only letters, numbers, and underscores.".to_string(),
+        )
+        .into());
+    }
+    Ok(clean_name)
+}
+
 /// Adds or logs in an offline player account (pirated / nickname mode)
 #[tracing::instrument]
 pub async fn login_offline(username: &str) -> crate::Result<Credentials> {
-    let clean_name = username.trim();
-    let name = if clean_name.is_empty() { "Player" } else { clean_name };
+    let name = validate_offline_username(username)?;
     let creds = Credentials::create_offline(name);
     let state = State::get().await?;
     creds.upsert(&state.pool).await?;
     Ok(creds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_offline_username;
+
+    #[test]
+    fn offline_username_validation() {
+        assert_eq!(validate_offline_username("  Steve_123 ").unwrap(), "Steve_123");
+        assert!(validate_offline_username("ab").is_err());
+        assert!(validate_offline_username("12345678901234567").is_err());
+        assert!(validate_offline_username("bad-name").is_err());
+        assert!(validate_offline_username("bad name").is_err());
+        assert!(validate_offline_username("").is_err());
+    }
 }

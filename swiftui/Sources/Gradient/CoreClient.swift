@@ -45,7 +45,11 @@ actor CoreClient {
         let environment = ProcessInfo.processInfo.environment
         let embedded = Bundle.main.executableURL?.deletingLastPathComponent()
             .appendingPathComponent("gradient-core")
+#if DEBUG
         let executable = environment["GRADIENT_CORE"].map { URL(fileURLWithPath: $0) } ?? embedded
+#else
+        let executable = embedded
+#endif
         guard let executable else { throw CoreError(tr("Вкажіть шлях до ядра в GRADIENT_CORE.")) }
 
         var childEnvironment = environment

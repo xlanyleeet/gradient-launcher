@@ -84,9 +84,10 @@ public sealed partial class MainWindow
         var notes = new StackPanel { Spacing = 10, MaxWidth = 440 };
         foreach (var text in new[]
         {
-            Tr("Бібліотека відкривається з картками профілів і швидким доступом до світів та серверів."),
-            Tr("Проєкти Modrinth відкриваються в головному вікні з описом, скриншотами та встановленням."),
-            Tr("Скіни Minecraft можна переглянути перед застосуванням."),
+            Tr("Шифрування токенів акаунтів (DPAPI / Keychain) та очищення токенів у резервних копіях бази."),
+            Tr("Масове оновлення модів («Оновити все»), оновлення модпаків Modrinth, пошук і фільтри у вкладці «Контент»."),
+            Tr("Додавання локальних ресурспаків, шейдерів і датапаків (.zip), а також вибір версії завантажувача та Snapshots."),
+            Tr("Автопошук встановлених Java та підказка рекомендованої оперативної пам’яті."),
         })
             notes.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap });
         notes.Children.Add(new HyperlinkButton
@@ -96,6 +97,7 @@ public sealed partial class MainWindow
         });
         await new ContentDialog
         {
+            RequestedTheme = Layout.ActualTheme,
             XamlRoot = Layout.XamlRoot,
             Title = Tr("Що нового"),
             Content = notes,

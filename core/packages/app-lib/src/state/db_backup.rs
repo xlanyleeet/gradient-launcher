@@ -113,6 +113,11 @@ pub(crate) async fn maybe_backup_existing_app_db(
             remove_partial_backup(&backup_path).await;
             return Err(copy_err);
         }
+    } else if let Err(err) = scrub_backup_tokens(&backup_path).await {
+        tracing::warn!(
+            "Failed to scrub tokens from pre-migration database backup at {}: {err}",
+            backup_path.display()
+        );
     }
 
     tracing::info!(
@@ -299,5 +304,40 @@ async fn create_sqlite_snapshot(
         .execute(&mut *conn)
         .await?;
 
+    Ok(())
+}
+
+async fn scrub_backup_tokens(backup_path: &Path) -> crate::Result<()> {
+    let options = SqliteConnectOptions::new()
+        .filename(backup_path)
+        .busy_timeout(Duration::from_secs(30))
+        .create_if_missing(false);
+    let mut conn = options.connect().await?;
+
+    let has_minecraft_users: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'minecraft_users'",
+    )
+    .fetch_one(&mut conn)
+    .await?;
+    if has_minecraft_users > 0 {
+        sqlx::query(
+            "UPDATE minecraft_users SET access_token = '', refresh_token = '' WHERE refresh_token != 'offline' AND access_token != '0'",
+        )
+        .execute(&mut conn)
+        .await?;
+    }
+
+    let has_modrinth_users: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'modrinth_users'",
+    )
+    .fetch_one(&mut conn)
+    .await?;
+    if has_modrinth_users > 0 {
+        sqlx::query("UPDATE modrinth_users SET session = ''")
+            .execute(&mut conn)
+            .await?;
+    }
+
+    let _ = conn.close().await;
     Ok(())
 }

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -65,20 +64,44 @@ public sealed partial class MainWindow
         FilterProfiles();
     }
 
-    private async void EditExtraPreferences(object sender, RoutedEventArgs e) => await Run(async () =>
+    private static Grid PreferenceRow(string label, FrameworkElement control)
     {
+        var text = Tr(label);
+        var row = new Grid { ColumnSpacing = 12, MinHeight = 44 };
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+        control.VerticalAlignment = VerticalAlignment.Center;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(control, text);
+        Grid.SetColumn(control, 1);
+        row.Children.Add(control);
+        return row;
+    }
+
+    private Task LoadBehaviorSettings() => Run(async () =>
+    {
+        if (BehaviorSection.Content is not null) return;
         var values = await PreferenceCall<NativePreferences>(new { action = "read" });
         var form = new StackPanel { Spacing = 8 };
         ToggleSwitch Toggle(string label, bool enabled)
         {
-            var toggle = new ToggleSwitch { Header = Tr(label), IsOn = enabled };
-            form.Children.Add(toggle);
+            var toggle = new ToggleSwitch { IsOn = enabled, MinWidth = 0, OnContent = "", OffContent = "" };
+            form.Children.Add(PreferenceRow(label, toggle));
             return toggle;
         }
         TextBox Input(string label, string? value, bool multiline = false)
         {
-            var field = new TextBox { Header = Tr(label), Text = value ?? "", AcceptsReturn = multiline, TextWrapping = TextWrapping.Wrap };
-            form.Children.Add(field);
+            var field = new TextBox { Text = value ?? "", AcceptsReturn = multiline, TextWrapping = TextWrapping.Wrap };
+            if (multiline)
+            {
+                field.Header = Tr(label);
+                form.Children.Add(field);
+            }
+            else
+            {
+                field.Width = 144;
+                form.Children.Add(PreferenceRow(label, field));
+            }
             return field;
         }
         void Heading(string label) => form.Children.Add(new TextBlock { Text = Tr(label), FontSize = 18, Margin = new Thickness(0, 8, 0, 0) });
@@ -93,7 +116,7 @@ public sealed partial class MainWindow
         var option5 = Toggle("Показувати вкладку «Файли»", values.show_files_tab_in_instances);
         var option6 = Toggle("Показувати вкладку «Скриншоти»", values.show_screenshots_tab_in_instances);
         var option7 = Toggle("Показувати кнопку вибору скіна в бічній панелі", values.show_skin_selector_in_sidebar);
-        Heading("Поведінка");
+        Heading("Поведінка Minecraft");
         var option8 = Toggle("Згортати лаунчер після запуску Minecraft", values.hide_on_process_start);
         var option9 = Toggle("Повертати вікно після виходу з Minecraft", values.refocus_on_game_close);
         var option10 = Toggle("Підтверджувати імпорт локальних модпаків", values.warn_on_unknown_modpacks);
@@ -103,40 +126,53 @@ public sealed partial class MainWindow
         var pre = Input("Перед запуском", values.hooks.pre_launch);
         var wrapper = Input("Команда-обгортка", values.hooks.wrapper);
         var post = Input("Після виходу", values.hooks.post_exit);
-        Heading("Сховище й діагностика");
+        Heading("Ліміти завантажень");
         var downloads = Input("Одночасні завантаження", values.max_concurrent_downloads.ToString());
         var writes = Input("Одночасні записи", values.max_concurrent_writes.ToString());
         form.Children.Add(new TextBlock { Text = Tr("Ліміти застосовуються після перезапуску Gradient."), TextWrapping = TextWrapping.Wrap });
-        if (await Editor(Tr("Налаштування"), new ScrollViewer { Content = form, MaxHeight = 550 }, Tr("Зберегти")).ShowAsync() != ContentDialogResult.Primary)
-            return;
-
-        var variables = env.Text.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.Split('=', 2)).ToArray();
-        if (variables.Any(pair => pair.Length != 2) ||
-            !int.TryParse(downloads.Text, out var downloadValue) || !int.TryParse(writes.Text, out var writeValue))
-            throw new FormatException(Tr("Змінні середовища · NAME=VALUE"));
-        static string? Command(string text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-        var next = new NativePreferences(
-            option0.IsOn,
-            option1.IsOn,
-            option2.IsOn,
-            option3.IsOn,
-            option4.IsOn,
-            option5.IsOn,
-            option6.IsOn,
-            option7.IsOn,
-            option8.IsOn,
-            option9.IsOn,
-            option10.IsOn,
-            option11.IsOn,
-            downloadValue, writeValue, variables,
-            new LaunchHooks(Command(pre.Text), Command(wrapper.Text), Command(post.Text)));
-        await PreferenceCall<JsonElement>(new { action = "save", values = next });
-        ApplyPreferences(next);
+        var save = new Button { Content = Tr("Зберегти"), HorizontalAlignment = HorizontalAlignment.Right };
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+        save.Click += async (_, _) => await Run(async () =>
+        {
+            save.IsEnabled = false;
+            try
+            {
+                var variables = env.Text.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => line.Split('=', 2)).ToArray();
+                if (variables.Any(pair => pair.Length != 2) ||
+                    !int.TryParse(downloads.Text, out var downloadValue) || !int.TryParse(writes.Text, out var writeValue))
+                    throw new FormatException(Tr("Змінні середовища · NAME=VALUE"));
+                static string? Command(string text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+                var next = new NativePreferences(
+                    option0.IsOn,
+                    option1.IsOn,
+                    option2.IsOn,
+                    option3.IsOn,
+                    option4.IsOn,
+                    option5.IsOn,
+                    option6.IsOn,
+                    option7.IsOn,
+                    option8.IsOn,
+                    option9.IsOn,
+                    option10.IsOn,
+                    option11.IsOn,
+                    downloadValue, writeValue, variables,
+                    new LaunchHooks(Command(pre.Text), Command(wrapper.Text), Command(post.Text)));
+                await PreferenceCall<JsonElement>(new { action = "save", values = next });
+                ApplyPreferences(next);
+                SetSettingsStatus(status, Tr("Налаштування збережено."));
+            }
+            catch (Exception error) { SetSettingsStatus(status, error.Message); }
+            finally { save.IsEnabled = true; }
+        }, waitForCore: true);
+        form.Children.Add(save);
+        form.Children.Add(status);
+        BehaviorSection.Content = form;
     }, waitForCore: true);
 
-    private async void OpenStorageSettings(object sender, RoutedEventArgs e) => await Run(async () =>
+    private Task LoadStorageSettings() => Run(async () =>
     {
+        if (StorageSection.Content is not null) return;
         var locations = await PreferenceCall<DataLocations>(new { action = "locations" });
         var usage = await PreferenceCall<StorageUsage>(new { action = "store_usage" });
         var form = new StackPanel { Spacing = 8 };
@@ -150,7 +186,7 @@ public sealed partial class MainWindow
             Tr("Невикористано · {0} МіБ", value.unused_cache_bytes >> 20));
         void AddAction(string label, Func<Task> action, bool refreshUsage = false)
         {
-            var button = new Button { Content = Tr(label) };
+            var button = new Button { Content = Tr(label), HorizontalAlignment = HorizontalAlignment.Right };
             button.Click += async (_, _) =>
             {
                 if (working) return;
@@ -162,8 +198,15 @@ public sealed partial class MainWindow
                 status.Text = "";
                 try
                 {
-                    await action();
-                    if (refreshUsage) ShowUsage(await PreferenceCall<StorageUsage>(new { action = "store_usage" }));
+                    await Run(async () =>
+                    {
+                        try
+                        {
+                            await action();
+                            if (refreshUsage) ShowUsage(await PreferenceCall<StorageUsage>(new { action = "store_usage" }));
+                        }
+                        catch (Exception error) { status.Text = error.Message; }
+                    }, waitForCore: true);
                     if (status.Text.Length == 0) status.Text = Tr("Дію виконано.");
                 }
                 catch (Exception error) { status.Text = error.Message; }
@@ -193,9 +236,9 @@ public sealed partial class MainWindow
         AddAction("Резервні копії бази", () => OpenLocation(locations.backups));
         ShowUsage(usage);
         form.Children.Add(space);
-        var limit = new NumberBox { Header = Tr("Ліміт кешу (ГіБ)"), Minimum = 0, Maximum = 1048576,
+        var limit = new NumberBox { Width = 144, Minimum = 0, Maximum = 1048576,
             Value = usage.cache_limit_bytes / (double)(1UL << 30), SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline };
-        form.Children.Add(limit);
+        form.Children.Add(PreferenceRow("Ліміт кешу (ГіБ)", limit));
         AddAction("Зберегти ліміт", async () =>
         {
             if (!double.IsFinite(limit.Value)) throw new FormatException(Tr("Ліміт кешу (ГіБ)"));
@@ -219,21 +262,16 @@ public sealed partial class MainWindow
         });
         form.Children.Add(progress);
         form.Children.Add(status);
-        var dialog = new ContentDialog
-        {
-            Title = Tr("Сховище й діагностика"),
-            Content = new ScrollViewer { Content = form, MaxHeight = 550 },
-            CloseButtonText = Tr("Закрити"),
-            XamlRoot = Layout.XamlRoot
-        };
-        dialog.Closing += (_, args) => args.Cancel = working;
-        await dialog.ShowAsync();
+        StorageSection.Content = form;
     }, waitForCore: true);
 
-    private static Task OpenLocation(string path)
+    private static async Task OpenLocation(string path)
     {
-        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-        return Task.CompletedTask;
+        if (!Directory.Exists(path))
+            throw new DirectoryNotFoundException(path);
+        var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path);
+        if (!await Windows.System.Launcher.LaunchFolderAsync(folder))
+            throw new InvalidOperationException(Tr("Не вдалося відкрити папку."));
     }
 
     private void RefreshCopyDetails()

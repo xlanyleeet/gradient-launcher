@@ -7,6 +7,8 @@ private struct LaunchSettings: Codable {
     var height: UInt16
     var arguments: [String]
     var discord_rpc: Bool? = nil
+    var system_memory_mib: UInt64? = nil
+    var recommended_memory_mib: UInt32? = nil
 }
 
 private struct SaveLaunchSettings: Encodable {
@@ -44,6 +46,8 @@ struct LaunchSettingsView: View {
     @State private var discordPresence: Bool?
     @State private var savingDiscordPresence = false
     @State private var discordError: String?
+    @State private var systemMemoryMib: UInt64?
+    @State private var recommendedMemoryMib: UInt32?
 
     private struct SetDiscordPresence: Encodable {
         let method = "set_discord_presence"
@@ -110,6 +114,16 @@ struct LaunchSettingsView: View {
         Form {
             Section(tr("Пам’ять і вікно гри")) {
                 TextField(tr("Максимум пам’яті (МіБ)"), text: $memory)
+                if let systemMemoryMib, let recommendedMemoryMib {
+                    HStack {
+                        Text(tr("ОЗП системи: {0} МіБ · Рекомендовано: {1} МіБ",
+                                String(systemMemoryMib), String(recommendedMemoryMib)))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button(tr("Рекомендовано")) { memory = String(recommendedMemoryMib) }
+                    }
+                }
                 Toggle(tr("На весь екран"), isOn: $fullscreen)
                 TextField(tr("Ширина (пкс)"), text: $width)
                 TextField(tr("Висота (пкс)"), text: $height)
@@ -221,6 +235,8 @@ struct LaunchSettingsView: View {
         do {
             let settings = try await core.call("launch_settings", as: LaunchSettings.self)
             memory = String(settings.memory_mib)
+            systemMemoryMib = settings.system_memory_mib
+            recommendedMemoryMib = settings.recommended_memory_mib
             width = String(settings.width)
             height = String(settings.height)
             fullscreen = settings.fullscreen

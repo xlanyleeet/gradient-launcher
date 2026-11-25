@@ -34,6 +34,42 @@ private struct Profile: Decodable, Identifiable, Equatable {
     let quarantined: Bool
     let icon: String?
     let play_seconds: UInt64?
+    let is_modpack: Bool?
+}
+
+private struct ModpackVersionOption: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let channel: String
+    let game_versions: [String]?
+
+    var label: String {
+        guard let game_versions, !game_versions.isEmpty else { return "\(name) · \(channel)" }
+        return "\(name) · Minecraft \(game_versions.joined(separator: ", ")) · \(channel)"
+    }
+}
+
+private struct ModpackVersionsResponse: Decodable {
+    let current_id: String?
+    let options: [ModpackVersionOption]
+}
+
+private struct UpdateAllResult: Decodable {
+    let updated: UInt32
+    let failed: UInt32
+}
+
+private struct GameVersionsRequest: Encodable {
+    let method = "game_versions"
+    let include_snapshots: Bool
+}
+
+private struct CreateProfileRequest: Encodable {
+    let method = "create_profile"
+    let name: String
+    let version: String
+    let loader: String
+    let loader_version: String?
 }
 
 private struct Account: Decodable, Identifiable, Equatable {
@@ -149,6 +185,15 @@ private struct LauncherView: View {
     @State private var quickEntries: [QuickEntry] = []
     @State private var quickExpanded = true
     @State private var showPackContent = false
+    @State private var contentSearch = ""
+    @State private var contentFilter = "all"
+    @State private var includeSnapshots = false
+    @State private var loaderVersions: [String] = []
+    @State private var loaderVersion = ""
+    @State private var modpackTarget: Profile?
+    @State private var modpackVersions: [ModpackVersionOption] = []
+    @State private var modpackCurrentVersion: String?
+    @State private var selectedModpackVersion = ""
     @State private var pendingPack: URL?
     @State private var catalogLink: String?
     @State private var shortcutProfile: ShortcutProfile?
@@ -358,6 +403,35 @@ private struct LauncherView: View {
                 if let updated = try? await core.call("accounts", as: [Account].self) { accounts = updated }
             }
         }
+        .sheet(item: $modpackTarget) { target in
+            VStack(alignment: .leading, spacing: 16) {
+                Text(tr("Оновити модпак")).font(.title2.bold())
+                Text(target.name).foregroundStyle(.secondary)
+                if modpackVersions.isEmpty {
+                    Text(tr("Сумісних версій немає."))
+                } else {
+                    Picker(tr("Версія модпаку"), selection: $selectedModpackVersion) {
+                        ForEach(modpackVersions) { option in
+                            Text(option.label).tag(option.id)
+                        }
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button(tr("Скасувати")) { modpackTarget = nil }.keyboardShortcut(.cancelAction)
+                    Button(tr("Встановити")) {
+                        let chosen = selectedModpackVersion
+                        modpackTarget = nil
+                        mutate("update_modpack", ["id": target.id, "version": chosen],
+                               message: tr("Оновлення модпаку додано до черги."))
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(selectedModpackVersion.isEmpty || selectedModpackVersion == modpackCurrentVersion)
+                }
+            }
+            .padding(24)
+            .frame(minWidth: 460)
+        }
     }
 
     private var sidebarProfiles: [Profile] {
@@ -392,7 +466,7 @@ private struct LauncherView: View {
         ScrollView {
             LazyVStack(spacing: 5) {
                 sidebarAction(tr("Бібліотека"), icon: "square.grid.2x2", action: returnToLibrary)
-                sidebarAction(tr("Каталог Modrinth"), icon: "safari") { showDiscover = true }
+                sidebarAction(tr("Каталог"), icon: "safari") { showDiscover = true }
                 if nativePreferences?.show_skin_selector_in_sidebar == true {
                     sidebarAction(tr("Скін Minecraft"), icon: "person.crop.square") { skinSettings = true }
                 }
@@ -656,16 +730,59 @@ private struct LauncherView: View {
         case .content, .worlds:
             if let profile {
                 if tab == .content {
+                    let hasUpdatable = content.contains {
+                        $0.has_update && !$0.locked && !$0.synced && (showPackContent || $0.pack_default != true)
+                    }
+                    HStack {
+                        Menu(tr("Додати файл"), systemImage: "plus") {
+                            Button(tr("Мод (.jar)")) { addContentFile(profile, kind: "mod") }
+                            Button(tr("Пакет ресурсів (.zip)")) { addContentFile(profile, kind: "resourcepack") }
+                            Button(tr("Шейдер (.zip)")) { addContentFile(profile, kind: "shaderpack") }
+                            Button(tr("Пакет даних (.zip)")) { addContentFile(profile, kind: "datapack") }
+                        }
+                        .disabled(busy || profile.running || profile.quarantined)
+                        if hasUpdatable {
+                            Button(tr("Оновити все")) { updateAllContent(profile) }
+                                .disabled(busy || profile.running || profile.quarantined)
+                        }
+                    }
+                    HStack {
+                        TextField(tr("Пошук контенту"), text: $contentSearch)
+                            .textFieldStyle(.roundedBorder)
+                        Picker(tr("Фільтр контенту"), selection: $contentFilter) {
+                            Text(tr("Усі")).tag("all")
+                            Text(tr("Моди")).tag("mod")
+                            Text(tr("Шейдери")).tag("shaderpack")
+                            Text(tr("Пакети ресурсів")).tag("resourcepack")
+                            Text(tr("Пакети даних")).tag("datapack")
+                            Text(tr("Є оновлення")).tag("updates")
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 180)
+                    }
                     Toggle(tr("Показувати стандартний контент"), isOn: $showPackContent)
                         .toggleStyle(.checkbox)
-                    Button(tr("Додати .jar"), systemImage: "plus") { addMod(profile) }
-                        .disabled(busy || profile.running || profile.quarantined)
                 }
                 if loadedTab != tabKey(profile, tab) {
                     ProgressView()
                 } else if tab == .content {
-                    let visible = content.filter { showPackContent || $0.pack_default != true }
-                    if visible.isEmpty { Text(tr("Контенту ще немає.")) }
+                    let query = contentSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let visible = content.filter { entry in
+                        if !showPackContent && entry.pack_default == true { return false }
+                        if !query.isEmpty &&
+                           !entry.name.localizedCaseInsensitiveContains(query) &&
+                           !entry.file.localizedCaseInsensitiveContains(query) {
+                            return false
+                        }
+                        switch contentFilter {
+                        case "updates": return entry.has_update
+                        case "all": return true
+                        default: return entry.kind.caseInsensitiveCompare(contentFilter) == .orderedSame
+                        }
+                    }
+                    if visible.isEmpty {
+                        Text(content.isEmpty ? tr("Контенту ще немає.") : tr("Нічого не знайдено."))
+                    }
                     ForEach(visible) { entry in contentRow(profile, entry) }
                 } else {
                     if worlds.isEmpty { Text(tr("Світів ще немає.")) }
@@ -789,11 +906,38 @@ private struct LauncherView: View {
         .padding(.vertical, 4)
     }
 
-    private func addMod(_ profile: Profile) {
+    private func addContentFile(_ profile: Profile, kind: String) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "jar") ?? .data]
+        let ext = kind == "mod" ? "jar" : "zip"
+        panel.allowedContentTypes = [UTType(filenameExtension: ext) ?? .data]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        mutate("add_mod", ["id": profile.id, "path": url.path])
+        mutate("add_content", ["id": profile.id, "path": url.path, "kind": kind])
+    }
+
+    private func updateAllContent(_ profile: Profile) {
+        Task {
+            await perform {
+                status = tr("Оновлюємо контент…")
+                let result = try await core.call("update_all_content", ["id": profile.id], as: UpdateAllResult.self)
+                loadedTab = nil
+                status = result.failed > 0
+                    ? tr("Оновлено: {0}, помилок: {1}.", String(result.updated), String(result.failed))
+                    : tr("Оновлено елементів: {0}.", String(result.updated))
+                try await refresh()
+            }
+        }
+    }
+
+    private func openModpackUpdater(_ profile: Profile) {
+        Task {
+            await perform {
+                let response = try await core.call("modpack_versions", ["id": profile.id], as: ModpackVersionsResponse.self)
+                modpackVersions = response.options
+                modpackCurrentVersion = response.current_id
+                selectedModpackVersion = response.current_id ?? response.options.first?.id ?? ""
+                modpackTarget = profile
+            }
+        }
     }
 
     private var hero: some View {
@@ -867,6 +1011,10 @@ private struct LauncherView: View {
                 editedProfile = profile
                 librarySheet = .groups
             }
+            if profile.is_modpack == true {
+                Button(tr("Оновити модпак")) { openModpackUpdater(profile) }
+                    .disabled(profile.running || profile.quarantined)
+            }
             Button(tr("Дублювати")) {
                 mutate("duplicate_profile", ["id": profile.id], message: tr("Дублювання додано до черги."))
             }
@@ -929,11 +1077,47 @@ private struct LauncherView: View {
     private func beginCreateProfile() {
         Task {
             await perform {
-                versions = try await core.call("game_versions", as: [String].self)
+                includeSnapshots = false
+                versions = try await core.send(GameVersionsRequest(include_snapshots: false), as: [String].self)
                 version = versions.first ?? ""
                 profileName = ""
                 loader = "vanilla"
+                loaderVersions = []
+                loaderVersion = ""
                 librarySheet = .create
+            }
+        }
+    }
+
+    private func reloadGameVersions(_ snapshots: Bool) {
+        Task {
+            do {
+                let list = try await core.send(GameVersionsRequest(include_snapshots: snapshots), as: [String].self)
+                versions = list
+                if !list.contains(version) { version = list.first ?? "" }
+                reloadLoaderVersions()
+            } catch { status = error.localizedDescription }
+        }
+    }
+
+    private func reloadLoaderVersions() {
+        let currentLoader = loader
+        let currentGame = version
+        guard currentLoader != "vanilla", !currentGame.isEmpty else {
+            loaderVersions = []
+            loaderVersion = ""
+            return
+        }
+        Task {
+            do {
+                let list = try await core.call("loader_versions", ["loader": currentLoader, "game_version": currentGame], as: [String].self)
+                guard loader == currentLoader, version == currentGame else { return }
+                loaderVersions = list
+                if !list.contains(loaderVersion) { loaderVersion = "" }
+            } catch {
+                loaderVersions = []
+                loaderVersion = ""
+                status = error.localizedDescription
             }
         }
     }
@@ -1011,16 +1195,26 @@ private struct LauncherView: View {
                 Form {
                     TextField(tr("Назва"), text: $profileName)
                     if sheet == .create {
+                        Toggle(tr("Показувати знімки (Snapshots)"), isOn: $includeSnapshots)
+                            .onChange(of: includeSnapshots) { _, next in reloadGameVersions(next) }
                         Picker("Minecraft", selection: $version) {
                             if versions.isEmpty { Text(tr("Версій немає")).tag("") }
                             ForEach(versions, id: \.self) { Text($0).tag($0) }
                         }
+                        .onChange(of: version) { _, _ in reloadLoaderVersions() }
                         Picker(tr("Завантажувач"), selection: $loader) {
                             Text("Vanilla").tag("vanilla")
                             Text("Fabric").tag("fabric")
                             Text("Forge").tag("forge")
                             Text("NeoForge").tag("neoforge")
                             Text("Quilt").tag("quilt")
+                        }
+                        .onChange(of: loader) { _, _ in reloadLoaderVersions() }
+                        if loader != "vanilla" {
+                            Picker(tr("Версія завантажувача"), selection: $loaderVersion) {
+                                Text(tr("Автоматично")).tag("")
+                                ForEach(loaderVersions, id: \.self) { Text($0).tag($0) }
+                            }
                         }
                     }
                 }
@@ -1030,8 +1224,18 @@ private struct LauncherView: View {
                     Button(sheet == .create ? tr("Створити") : tr("Зберегти")) {
                         librarySheet = nil
                         if sheet == .create {
-                            mutate("create_profile", ["name": profileName, "version": version, "loader": loader],
-                                   message: tr("Профіль додано до черги."))
+                            let req = CreateProfileRequest(
+                                name: profileName, version: version, loader: loader,
+                                loader_version: loaderVersion.isEmpty ? nil : loaderVersion
+                            )
+                            Task {
+                                await perform {
+                                    status = tr("Профіль додано до черги.")
+                                    _ = try await core.send(req, as: EmptyReply.self)
+                                    loadedTab = nil
+                                    try await refresh()
+                                }
+                            }
                         } else if let editedProfile {
                             mutate("rename_profile", ["id": editedProfile.id, "name": profileName])
                         }
@@ -1246,9 +1450,10 @@ private struct LauncherView: View {
         }
     }
 
-    private func completeMicrosoft(_ code: String?) {
+    private func completeMicrosoft(_ code: String?, _ oauthError: String?) {
         guard let code else {
             showMicrosoft = false
+            if let oauthError, !oauthError.isEmpty { status = oauthError }
             return
         }
         loginURL = nil
@@ -1256,6 +1461,7 @@ private struct LauncherView: View {
         Task {
             do {
                 _ = try await core.call("finish_login", ["code": code], as: EmptyReply.self)
+                accounts = try await core.call("accounts", as: [Account].self)
                 status = tr("Вхід у Microsoft виконано.")
             } catch { status = error.localizedDescription }
         }
@@ -1273,12 +1479,14 @@ private struct LauncherView: View {
 
 private struct MicrosoftWebView: NSViewRepresentable {
     let url: URL
-    let complete: (String?) -> Void
+    let complete: (String?, String?) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(complete: complete) }
 
     func makeNSView(context: Context) -> WKWebView {
-        let web = WKWebView()
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let web = WKWebView(frame: .zero, configuration: configuration)
         web.navigationDelegate = context.coordinator
         web.load(URLRequest(url: url))
         return web
@@ -1287,9 +1495,9 @@ private struct MicrosoftWebView: NSViewRepresentable {
     func updateNSView(_ web: WKWebView, context: Context) {}
 
     final class Coordinator: NSObject, WKNavigationDelegate {
-        let complete: (String?) -> Void
+        let complete: (String?, String?) -> Void
 
-        init(complete: @escaping (String?) -> Void) { self.complete = complete }
+        init(complete: @escaping (String?, String?) -> Void) { self.complete = complete }
 
         func webView(
             _ webView: WKWebView,
@@ -1302,10 +1510,14 @@ private struct MicrosoftWebView: NSViewRepresentable {
                 decisionHandler(.allow)
                 return
             }
-            let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?.first { $0.name == "code" }?.value
+            let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+            let code = queryItems?.first { $0.name == "code" }?.value
+            let oauthError = code == nil
+                ? (queryItems?.first { $0.name == "error_description" }?.value
+                    ?? queryItems?.first { $0.name == "error" }?.value)
+                : nil
             decisionHandler(.cancel)
-            complete(code)
+            complete(code, oauthError)
         }
     }
 }

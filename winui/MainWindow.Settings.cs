@@ -12,8 +12,9 @@ namespace Gradient;
 
 public sealed partial class MainWindow
 {
-    private sealed record LaunchSettings(uint memory_mib, bool fullscreen, ushort width, ushort height, string[] arguments, bool? discord_rpc = null);
+    private sealed record LaunchSettings(uint memory_mib, bool fullscreen, ushort width, ushort height, string[] arguments, bool? discord_rpc = null, ulong? system_memory_mib = null, uint? recommended_memory_mib = null);
     private bool? discordPresence;
+    private uint? recommendedMemoryMib;
     private sealed record ProfileLaunchSettings(string? memory, string? java);
     private sealed record JavaRuntime(uint parsed_version, string version, string path);
     private sealed record UpdateInfo(string installed, AvailableUpdate? available);
@@ -107,8 +108,38 @@ public sealed partial class MainWindow
             var content = new StackPanel { Spacing = 12 };
             content.Children.Add(versions);
             content.Children.Add(current);
+            var detect = new Button { Content = Tr("Знайти встановлені") };
+            var detectStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+            content.Children.Add(detect);
+            content.Children.Add(detectStatus);
             var dialog = Editor(Tr("Інсталяції Java"), content, Tr("Вибрати файл"));
             dialog.SecondaryButtonText = Tr("Завантажити");
+            detect.Click += async (_, _) =>
+            {
+                detect.IsEnabled = false;
+                try
+                {
+                    var majorSelected = (string)versions.SelectedItem;
+                    var found = await core.Call<JavaRuntime[]>(new { method = "detect_java", major = majorSelected });
+                    if (found.FirstOrDefault() is not { } first)
+                    {
+                        detectStatus.Text = Tr("Java {0} на комп’ютері не знайдено.", majorSelected);
+                        detectStatus.Visibility = Visibility.Visible;
+                        return;
+                    }
+                    await core.Call<JsonElement>(new { method = "set_java_runtime", major = majorSelected, path = first.path });
+                    runtimes = await core.Call<JavaRuntime[]>(new { method = "java_runtimes" });
+                    ShowRuntime();
+                    detectStatus.Text = Tr("Знайдено і збережено: {0}", first.path);
+                    detectStatus.Visibility = Visibility.Visible;
+                }
+                catch (Exception error)
+                {
+                    detectStatus.Text = error.Message;
+                    detectStatus.Visibility = Visibility.Visible;
+                }
+                finally { detect.IsEnabled = true; }
+            };
             var result = await dialog.ShowAsync();
             var major = (string)versions.SelectedItem;
             if (result == ContentDialogResult.Primary)
@@ -149,6 +180,18 @@ public sealed partial class MainWindow
     {
         var values = await core.Call<LaunchSettings>(new { method = "launch_settings" });
         MemorySetting.Text = values.memory_mib.ToString();
+        recommendedMemoryMib = values.recommended_memory_mib;
+        if (values.system_memory_mib is ulong sysMib && values.recommended_memory_mib is uint recMib)
+        {
+            MemoryHint.Text = Tr("ОЗП системи: {0} МіБ · Рекомендовано: {1} МіБ", sysMib, recMib);
+            MemoryHint.Visibility = Visibility.Visible;
+            RecommendedMemoryButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            MemoryHint.Visibility = Visibility.Collapsed;
+            RecommendedMemoryButton.Visibility = Visibility.Collapsed;
+        }
         FullscreenSetting.IsOn = values.fullscreen;
         WidthSetting.Text = values.width.ToString();
         HeightSetting.Text = values.height.ToString();
@@ -179,13 +222,19 @@ public sealed partial class MainWindow
         SetSettingsStatus(DiscordStatus, "");
         try
         {
-            await core.Call<JsonElement>(new { method = "set_discord_presence", enabled });
-            discordPresence = enabled;
-        }
-        catch (Exception error)
-        {
-            DiscordPresenceSetting.IsOn = previous;
-            SetSettingsStatus(DiscordStatus, error.Message);
+            await Run(async () =>
+            {
+                try
+                {
+                    await core.Call<JsonElement>(new { method = "set_discord_presence", enabled });
+                    discordPresence = enabled;
+                }
+                catch (Exception error)
+                {
+                    DiscordPresenceSetting.IsOn = previous;
+                    SetSettingsStatus(DiscordStatus, error.Message);
+                }
+            }, waitForCore: true);
         }
         finally { DiscordPresenceSetting.IsEnabled = true; }
     }
@@ -194,6 +243,12 @@ public sealed partial class MainWindow
     {
         status.Text = message;
         status.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void ApplyRecommendedMemory(object sender, RoutedEventArgs e)
+    {
+        if (recommendedMemoryMib is uint rec)
+            MemorySetting.Text = rec.ToString();
     }
 
     private async void SaveSettings(object sender, RoutedEventArgs e)

@@ -4558,7 +4558,7 @@ dependencies = [
 
 [[package]]
 name = "gradient-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -12448,6 +12448,7 @@ dependencies = [
 name = "theseus"
 version = "1.0.0-local"
 dependencies = [
+ "aes-gcm",
  "ariadne",
  "async-minecraft-ping",
  "async-recursion",

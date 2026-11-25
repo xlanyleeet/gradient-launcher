@@ -28,6 +28,7 @@ struct JavaRuntimesView: View {
                 Text(tr("Для цієї версії шлях ще не збережено.")).foregroundStyle(.secondary)
             }
             HStack {
+                Button(tr("Знайти встановлені")) { Task { await detectRuntime() } }.disabled(busy)
                 Button(tr("Вибрати файл…"), action: chooseFile).disabled(busy)
                 Button(tr("Завантажити")) {
                     Task { await change("download_java_runtime", ["major": major]) }
@@ -51,6 +52,19 @@ struct JavaRuntimesView: View {
         panel.message = tr("Виберіть виконуваний файл java всередині папки bin.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await change("set_java_runtime", ["major": major, "path": url.path]) }
+    }
+
+    @MainActor private func detectRuntime() async {
+        await run {
+            let found = try await core.call("detect_java", ["major": major], as: [Runtime].self)
+            guard let first = found.first else {
+                status = tr("Java {0} на комп’ютері не знайдено.", String(describing: major))
+                return
+            }
+            _ = try await core.call("set_java_runtime", ["major": major, "path": first.path], as: EmptyReply.self)
+            try await refresh()
+            status = tr("Знайдено і збережено: {0}", String(describing: first.path))
+        }
     }
 
     @MainActor private func change(_ method: String, _ values: [String: String]) async {

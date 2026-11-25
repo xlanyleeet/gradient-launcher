@@ -6,7 +6,20 @@ use std::{
     io::{Cursor, Read, Write},
     path::{Path, PathBuf},
 };
-use theseus::minecraft_skins::{self, MinecraftSkinVariant, UrlOrBlob};
+use theseus::{
+    data::Credentials,
+    minecraft_skins::{self, MinecraftSkinVariant, UrlOrBlob},
+};
+use tokio::sync::Mutex;
+use url::Url;
+
+struct OnlineTexture {
+    url: Url,
+    png: Vec<u8>,
+    avatar: String,
+}
+
+static ONLINE_TEXTURE: Mutex<Option<OnlineTexture>> = Mutex::const_new(None);
 
 pub(super) fn read_texture(path: &Path) -> super::Result<Vec<u8>> {
     const LIMIT: u64 = 1024 * 1024;
@@ -26,20 +39,80 @@ pub(super) async fn current_preview() -> super::Result<Value> {
     if let Some(id) = active_offline_account().await? {
         return match offline_skin(id)? {
             Some((png, slim)) => preview(&png, slim),
-            None => Ok(Value::Null),
+            None => Box::pin(default_preview()).await,
         };
     }
-    let equipped = Box::pin(minecraft_skins::get_available_skins())
+    let Some(account) = theseus::minecraft_auth::users()
         .await?
         .into_iter()
-        .find(|skin| skin.is_equipped);
-    let Some(equipped) = equipped else {
-        return Ok(Value::Null);
+        .find(|account| account.active)
+    else {
+        return Box::pin(default_preview()).await;
     };
-    let texture = UrlOrBlob::Url(equipped.texture.as_ref().clone());
+    let Some(profile) = account.online_profile_fresh().await else {
+        return Box::pin(default_preview()).await;
+    };
+    let Ok(skin) = profile.current_skin() else {
+        return Box::pin(default_preview()).await;
+    };
+    let mut cached = ONLINE_TEXTURE.lock().await;
+    let texture = load_online_texture(&mut cached, &skin.url).await?;
+    preview(
+        &texture.png,
+        matches!(skin.variant, MinecraftSkinVariant::Slim),
+    )
+}
+
+async fn default_preview() -> super::Result<Value> {
+    let skin = minecraft_skins::get_fallback_default_skin()?;
+    let texture = UrlOrBlob::Url(skin.texture.as_ref().clone());
     let png =
         Box::pin(minecraft_skins::normalize_skin_texture(&texture)).await?;
-    preview(&png, matches!(equipped.variant, MinecraftSkinVariant::Slim))
+    preview(&png, matches!(skin.variant, MinecraftSkinVariant::Slim))
+}
+
+pub(super) async fn online_avatar(
+    account: &Credentials,
+) -> super::Result<Option<String>> {
+    let Some(profile) = account.online_profile().await else {
+        return Ok(None);
+    };
+    let Ok(skin) = profile.current_skin() else {
+        return Ok(None);
+    };
+    let mut cached = ONLINE_TEXTURE.lock().await;
+    Ok(Some(
+        load_online_texture(&mut cached, &skin.url)
+            .await?
+            .avatar
+            .clone(),
+    ))
+}
+
+async fn load_online_texture<'a>(
+    cached: &'a mut Option<OnlineTexture>,
+    source: &Url,
+) -> super::Result<&'a OnlineTexture> {
+    let mut url = source.clone();
+    if url.scheme() == "http"
+        && url.host_str() == Some("textures.minecraft.net")
+    {
+        url.set_scheme("https")
+            .map_err(|_| "Invalid Minecraft texture URL")?;
+    }
+    if cached.as_ref().is_none_or(|texture| texture.url != url) {
+        let png = Box::pin(minecraft_skins::normalize_skin_texture(
+            &UrlOrBlob::Url(url.clone()),
+        ))
+        .await?;
+        let avatar = avatar_png(&png)?;
+        return Ok(cached.insert(OnlineTexture {
+            url,
+            png: png.to_vec(),
+            avatar,
+        }));
+    }
+    Ok(cached.as_ref().expect("matched cached texture"))
 }
 
 fn decode_texture(bytes: &[u8]) -> super::Result<RgbaImage> {
@@ -175,7 +248,11 @@ pub(super) fn offline_avatar(id: uuid::Uuid) -> super::Result<Option<String>> {
     let Some((png, _)) = offline_skin(id)? else {
         return Ok(None);
     };
-    let atlas = decode_texture(&png)?;
+    avatar_png(&png).map(Some)
+}
+
+fn avatar_png(png: &[u8]) -> super::Result<String> {
+    let atlas = decode_texture(png)?;
     let mut face = imageops::crop_imm(&atlas, 8, 8, 8, 8).to_image();
     let hat = imageops::crop_imm(&atlas, 40, 8, 8, 8);
     imageops::overlay(&mut face, &*hat, 0, 0);
@@ -187,5 +264,5 @@ pub(super) fn offline_avatar(id: uuid::Uuid) -> super::Result<Option<String>> {
         imageops::FilterType::Nearest,
     ))
     .write_to(&mut output, ImageFormat::Png)?;
-    Ok(Some(STANDARD.encode(output.into_inner())))
+    Ok(STANDARD.encode(output.into_inner()))
 }

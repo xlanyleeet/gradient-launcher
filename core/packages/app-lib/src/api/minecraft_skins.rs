@@ -1338,7 +1338,8 @@ fn is_bundled_skin(texture_key: &str, variant: MinecraftSkinVariant) -> bool {
     })
 }
 
-fn get_fallback_default_skin() -> crate::Result<&'static Skin> {
+/// Returns the bundled default skin used when a profile has no active texture.
+pub fn get_fallback_default_skin() -> crate::Result<&'static Skin> {
     assets::DEFAULT_SKINS
         .iter()
         .find(|skin| {

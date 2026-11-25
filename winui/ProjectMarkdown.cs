@@ -59,7 +59,7 @@ internal static class ProjectMarkdown
                     if (leaf is CodeBlock code)
                         paragraph.Inlines.Add(new Run { Text = code.Lines.ToString(), FontFamily = new FontFamily("Consolas") });
                     else
-                        Append(paragraph.Inlines, leaf.Inline, baseUri);
+                        Append(paragraph.Inlines, leaf.Inline, baseUri, IsLinkedImageRow(leaf.Inline));
                     if (paragraph.Inlines.Count > 0)
                     {
                         text.Blocks.Add(paragraph);
@@ -70,7 +70,22 @@ internal static class ProjectMarkdown
         }
     }
 
-    private static void Append(InlineCollection output, ContainerInline? content, Uri? baseUri)
+    private static bool IsLinkedImageRow(ContainerInline? content)
+    {
+        if (content is null) return false;
+        var images = 0;
+        foreach (var inline in content)
+        {
+            if (inline is LinkInline { IsImage: false, FirstChild: LinkInline { IsImage: true, NextSibling: null } })
+                images++;
+            else if (inline is not LineBreakInline &&
+                     (inline is not LiteralInline text || !string.IsNullOrWhiteSpace(text.Content.ToString())))
+                return false;
+        }
+        return images > 1;
+    }
+
+    private static void Append(InlineCollection output, ContainerInline? content, Uri? baseUri, bool linkedImageRow = false)
     {
         if (content is null) return;
         foreach (var inline in content)
@@ -81,7 +96,7 @@ internal static class ProjectMarkdown
                     output.Add(new Run { Text = literal.Content.ToString() });
                     break;
                 case LineBreakInline line:
-                    if (line.IsHard) output.Add(new LineBreak());
+                    if (line.IsHard && !linkedImageRow) output.Add(new LineBreak());
                     else output.Add(new Run { Text = " " });
                     break;
                 case CodeInline code:
@@ -101,7 +116,7 @@ internal static class ProjectMarkdown
                 case LinkInline link:
                     var address = Https(link.Url, baseUri);
                     if (link.FirstChild is LinkInline { IsImage: true } linkedImage && linkedImage.NextSibling is null)
-                        AddImage(output, linkedImage, address, baseUri);
+                        AddImage(output, linkedImage, address, baseUri, linkedImageRow);
                     else if (address is not null)
                     {
                         var hyperlink = new Hyperlink { NavigateUri = address };
@@ -119,7 +134,7 @@ internal static class ProjectMarkdown
         }
     }
 
-    private static void AddImage(InlineCollection target, LinkInline image, Uri? destination, Uri? baseUri)
+    private static void AddImage(InlineCollection target, LinkInline image, Uri? destination, Uri? baseUri, bool linkedImageRow = false)
     {
         var label = PlainText(image);
         if (Https(image.Url, baseUri) is not { } url)
@@ -127,17 +142,42 @@ internal static class ProjectMarkdown
             target.Add(new Run { Text = label });
             return;
         }
+        var bitmap = new BitmapImage(url) { DecodePixelWidth = 620 };
         var illustration = new Image
         {
-            Source = new BitmapImage(url) { DecodePixelWidth = 620 },
             MaxWidth = 420, MaxHeight = 220, Stretch = Stretch.Uniform,
         };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(illustration, label);
-        target.Add(new InlineUIContainer
+        if (linkedImageRow)
         {
-            Child = destination is null ? illustration :
-                new HyperlinkButton { Content = illustration, NavigateUri = destination, Padding = new Thickness(0) }
-        });
+            illustration.Height = 34;
+            illustration.Width = 120;
+            illustration.ImageOpened += (_, _) =>
+            {
+                if (bitmap.PixelHeight == 0) return;
+                var ratio = (double)bitmap.PixelWidth / bitmap.PixelHeight;
+                if (ratio >= 2.3)
+                    illustration.Width = Math.Min(220, 34 * ratio);
+                else
+                {
+                    illustration.ClearValue(FrameworkElement.HeightProperty);
+                    illustration.ClearValue(FrameworkElement.WidthProperty);
+                }
+            };
+        }
+        illustration.Source = bitmap;
+
+        FrameworkElement element = illustration;
+        if (destination is not null)
+        {
+            element = new HyperlinkButton
+            {
+                Content = illustration, NavigateUri = destination, Padding = new Thickness(0),
+                MinWidth = 0, MinHeight = 0
+            };
+            ToolTipService.SetToolTip(element, label);
+        }
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(element, label);
+        target.Add(new InlineUIContainer { Child = element });
     }
 
     private static string PlainText(ContainerInline content) => string.Concat(content.Select(inline => inline switch

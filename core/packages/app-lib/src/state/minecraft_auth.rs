@@ -572,8 +572,12 @@ impl Credentials {
                         name: x.username,
                         ..MinecraftProfile::default()
                     },
-                    access_token: x.access_token,
-                    refresh_token: x.refresh_token,
+                    access_token: crate::state::token_crypto::unprotect_token(
+                        &x.access_token,
+                    ),
+                    refresh_token: crate::state::token_crypto::unprotect_token(
+                        &x.refresh_token,
+                    ),
                     expires: Utc
                         .timestamp_opt(x.expires, 0)
                         .single()
@@ -606,8 +610,12 @@ impl Credentials {
                     name: x.username,
                     ..MinecraftProfile::default()
                 },
-                access_token: x.access_token,
-                refresh_token: x.refresh_token,
+                access_token: crate::state::token_crypto::unprotect_token(
+                    &x.access_token,
+                ),
+                refresh_token: crate::state::token_crypto::unprotect_token(
+                    &x.refresh_token,
+                ),
                 expires: Utc
                     .timestamp_opt(x.expires, 0)
                     .single()
@@ -646,6 +654,11 @@ impl Credentials {
             .await?;
         }
 
+        let protected_access_token =
+            crate::state::token_crypto::protect_token(&self.access_token);
+        let protected_refresh_token =
+            crate::state::token_crypto::protect_token(&self.refresh_token);
+
         sqlx::query!(
             "
             INSERT INTO minecraft_users (uuid, active, username, access_token, refresh_token, expires)
@@ -660,8 +673,8 @@ impl Credentials {
             uuid,
             self.active,
             profile.name,
-            self.access_token,
-            self.refresh_token,
+            protected_access_token,
+            protected_refresh_token,
             expires,
         )
             .execute(exec)

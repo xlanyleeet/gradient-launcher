@@ -12,7 +12,7 @@ namespace Gradient;
 
 public sealed partial class MainWindow : Window
 {
-    public sealed record Profile(string id, string name, string version, string loader, string? last_played, bool running, bool quarantined, string? icon, ulong play_seconds = 0)
+    public sealed record Profile(string id, string name, string version, string loader, string? last_played, bool running, bool quarantined, string? icon, ulong play_seconds = 0, bool is_modpack = false)
     {
         public bool ShowPlayTime { get; init; }
         public string GameLabel => ShowPlayTime
@@ -42,7 +42,8 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        InitializeAppearance();
+        BehaviorSection.Expanding += async (_, _) => await LoadBehaviorSettings();
+        StorageSection.Expanding += async (_, _) => await LoadStorageSettings();
         Status.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
         {
             LibraryStatus.Text = Status.Text;
@@ -50,6 +51,7 @@ public sealed partial class MainWindow : Window
         });
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
+        InitializeAppearance();
         AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
         WindowTitleBar.LayoutUpdated += (_, _) => UpdateTitleBar();
         BackButton.PointerEntered += (_, _) => AnimatedIcon.SetState(BackArrow, "PointerOver");
@@ -207,6 +209,8 @@ public sealed partial class MainWindow : Window
             : Tr("Minecraft {0}   ·   {1}   ·   Останній запуск  {2}", selected.version, selected.loader, selected.last_played ?? "—");
         PlayButton.IsEnabled = selected is { quarantined: false } || selected?.running == true;
         ProfileActions.IsEnabled = selected is not null;
+        UpdateModpackItem.Visibility = selected is { is_modpack: true } ? Visibility.Visible : Visibility.Collapsed;
+        UpdateModpackItem.IsEnabled = selected is { is_modpack: true, running: false, quarantined: false };
         PlayButton.Content = selected?.running == true ? Tr("■  Зупинити") : Tr("▶  Грати");
         if (selected is null)
         {
@@ -222,6 +226,8 @@ public sealed partial class MainWindow : Window
             ServerRows.Children.Clear();
             AddServerButton.IsEnabled = false;
             serverViewKey = null;
+            loadedContent = [];
+            UpdateAllContentButton.Visibility = Visibility.Collapsed;
             ContentRows.Children.Clear();
             WorldRows.Children.Clear();
             AddModButton.IsEnabled = false;
@@ -360,6 +366,7 @@ public sealed partial class MainWindow : Window
         var input = new TextBox { PlaceholderText = Tr("Ім’я гравця") };
         var dialog = new ContentDialog
         {
+            RequestedTheme = Layout.ActualTheme,
             XamlRoot = Layout.XamlRoot, Title = Tr("Офлайн-акаунт"), Content = input,
             PrimaryButtonText = Tr("Зберегти"), CloseButtonText = Tr("Скасувати")
         };
@@ -372,34 +379,61 @@ public sealed partial class MainWindow : Window
     private async void MicrosoftLogin(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         var url = await core.Call<string>(new { method = "begin_login" });
+        var tempDataDir = Path.Combine(Path.GetTempPath(), $"GradientOAuth-{Guid.NewGuid():N}");
         var web = new WebView2 { Width = 650, Height = 440 };
         var dialog = new ContentDialog
         {
+            RequestedTheme = Layout.ActualTheme,
             XamlRoot = Layout.XamlRoot, Title = Tr("Увійти в Microsoft"), Content = web,
             CloseButtonText = Tr("Скасувати")
         };
         string? code = null;
+        string? oauthError = null;
         web.NavigationStarting += (_, args) =>
         {
-            var uri = new Uri(args.Uri);
+            if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri))
+                return;
             if (uri.Scheme != "https" || uri.Host != "login.live.com" || uri.AbsolutePath != "/oauth20_desktop.srf")
                 return;
             args.Cancel = true;
-            var query = new Windows.Foundation.WwwFormUrlDecoder(uri.Query);
-            code = query.FirstOrDefault(pair => pair.Name == "code")?.Value;
+            if (!string.IsNullOrEmpty(uri.Query))
+            {
+                var query = new Windows.Foundation.WwwFormUrlDecoder(uri.Query);
+                code = query.FirstOrDefault(pair => pair.Name == "code")?.Value;
+                if (code is null)
+                {
+                    oauthError = query.FirstOrDefault(pair => pair.Name == "error_description")?.Value
+                        ?? query.FirstOrDefault(pair => pair.Name == "error")?.Value;
+                }
+            }
             dialog.Hide();
         };
         try
         {
+            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateWithOptionsAsync(
+                null, tempDataDir, null);
+            await web.EnsureCoreWebView2Async(env);
             web.Source = new Uri(url);
             await dialog.ShowAsync();
         }
         finally
         {
             web.Close();
+            try
+            {
+                if (Directory.Exists(tempDataDir))
+                    Directory.Delete(tempDataDir, true);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
             if (code is null) await core.Call<JsonElement>(new { method = "cancel_login" });
         }
-        if (code is null) return;
+        if (code is null)
+        {
+            if (!string.IsNullOrWhiteSpace(oauthError))
+                Status.Text = oauthError;
+            return;
+        }
         await core.Call<JsonElement>(new { method = "finish_login", code });
         await RefreshAccountAvatar();
         Status.Text = Tr("Вхід у Microsoft виконано.");

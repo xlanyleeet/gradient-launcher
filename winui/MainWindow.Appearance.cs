@@ -70,16 +70,36 @@ public sealed partial class MainWindow
     {
         var dark = Layout.ActualTheme == ElementTheme.Dark;
         var surface = dark ? Color.FromArgb(255, 23, 46, 50) : Color.FromArgb(255, 168, 222, 215);
-        var chrome = dark ? Color.FromArgb(255, 20, 31, 39) : Color.FromArgb(255, 224, 242, 240);
-        if (new AccessibilitySettings().HighContrast)
+        var chrome = dark ? Color.FromArgb(255, 20, 31, 39) : Color.FromArgb(255, 244, 248, 247);
+        var highContrast = new AccessibilitySettings().HighContrast;
+        if (highContrast)
             surface = chrome = new UISettings().GetColorValue(UIColorType.Background);
 
         Layout.Background = LibrarySurface.Background = new SolidColorBrush(surface);
         WindowTitleBar.Background = Navigation.Background = new SolidColorBrush(chrome);
+        ApplyCaptionColors(dark, highContrast);
         OverlayPaneBrush.Color = ExpandedPaneBrush.Color = chrome;
         CoverClear.Color = Color.FromArgb(0, surface.R, surface.G, surface.B);
         CoverFade.Color = Color.FromArgb(179, surface.R, surface.G, surface.B);
         CoverSolid.Color = surface;
+    }
+
+    private void ApplyCaptionColors(bool dark, bool highContrast)
+    {
+        if (!Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported()) return;
+        var caption = AppWindow.TitleBar;
+        Color foreground = dark ? Microsoft.UI.Colors.White : Color.FromArgb(255, 28, 40, 39);
+        Color inactive = dark ? Color.FromArgb(255, 174, 184, 190) : Color.FromArgb(255, 86, 100, 98);
+        caption.ButtonForegroundColor = highContrast ? null : foreground;
+        caption.ButtonInactiveForegroundColor = highContrast ? null : inactive;
+        caption.ButtonBackgroundColor = highContrast ? null : Microsoft.UI.Colors.Transparent;
+        caption.ButtonInactiveBackgroundColor = highContrast ? null : Microsoft.UI.Colors.Transparent;
+        caption.ButtonHoverForegroundColor = highContrast ? null : foreground;
+        caption.ButtonPressedForegroundColor = highContrast ? null : foreground;
+        caption.ButtonHoverBackgroundColor = highContrast ? null :
+            dark ? Color.FromArgb(24, 255, 255, 255) : Color.FromArgb(20, 0, 0, 0);
+        caption.ButtonPressedBackgroundColor = highContrast ? null :
+            dark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(34, 0, 0, 0);
     }
 
     private void ChangeAppearance(object sender, SelectionChangedEventArgs e)
