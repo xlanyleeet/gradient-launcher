@@ -1,7 +1,7 @@
 use crate::event::emit::{emit_instance, emit_process};
-use crate::event::{InstancePayloadType, ProcessPayloadType};
-#[cfg(feature = "tauri")]
-use crate::event::{LogEvent, LogPayload};
+use crate::event::{
+    InstancePayloadType, LogEvent, LogPayload, ProcessPayloadType,
+};
 use crate::util::io::IOError;
 use crate::util::rpc::RpcServer;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
