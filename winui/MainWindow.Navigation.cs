@@ -124,7 +124,12 @@ public sealed partial class MainWindow
         SettingsPage.Visibility = DiscoverPage.Visibility = LibraryHome.Visibility = ProjectPage.Visibility = Visibility.Collapsed;
         LibraryPage.Visibility = Visibility.Visible;
         BackButton.Visibility = Visibility.Visible;
-        if (changed) Details.SelectedItem = ContentTab;
+        if (changed)
+        {
+            Details.SelectedItem = ContentTab;
+            ContentSearch.Text = "";
+            ContentKindFilter.SelectedIndex = 0;
+        }
         FilterProfiles();
     }
 

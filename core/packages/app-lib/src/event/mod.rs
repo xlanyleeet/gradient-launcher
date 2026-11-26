@@ -24,6 +24,8 @@ pub struct EventState {
     pub app: tauri::AppHandle,
     #[cfg(feature = "tauri")]
     event_channel: RwLock<Channel<InvokeResponseBody>>,
+    #[cfg(not(feature = "tauri"))]
+    event_sender: tokio::sync::broadcast::Sender<AppEvent>,
     pub loading_bars: DashMap<Uuid, LoadingBar>,
 }
 
@@ -52,7 +54,9 @@ impl EventState {
     pub async fn init() -> crate::Result<Arc<Self>> {
         EVENT_STATE
             .get_or_try_init(|| async {
+                let (event_sender, _) = tokio::sync::broadcast::channel(1024);
                 Ok(Arc::new(Self {
+                    event_sender,
                     loading_bars: DashMap::new(),
                 }))
             })
@@ -67,9 +71,19 @@ impl EventState {
             .clone()
     }
 
-    #[cfg(feature = "tauri")]
     pub(crate) fn try_get() -> Option<Arc<Self>> {
         EVENT_STATE.get().cloned()
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<AppEvent> {
+        self.event_sender.subscribe()
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    pub fn send(&self, event: AppEvent) -> crate::Result<()> {
+        let _ = self.event_sender.send(event);
+        Ok(())
     }
 
     #[cfg(feature = "tauri")]

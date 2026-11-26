@@ -25,7 +25,8 @@ public sealed partial class MainWindow : Window
         bool paused, bool can_pause, bool can_cancel, double? progress, string? error);
 
     private readonly CoreClient core = new();
-    private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private CancellationTokenSource? libraryDebounceCts;
+    private CancellationTokenSource? logDebounceCts;
     private Profile[] library = [];
     private Job[] jobs = [];
     private string? selectedProfileId;
@@ -64,11 +65,15 @@ public sealed partial class MainWindow : Window
         Navigation.SelectedItem = LibraryNavigation;
         ready = true;
         AppWindow.Resize(new SizeInt32(1160, 770));
-        timer.Tick += async (_, _) => await Run(Update);
+        core.EventReceived += OnCoreEvent;
         Closed += (_, _) =>
         {
             closed = true;
-            timer.Stop();
+            core.EventReceived -= OnCoreEvent;
+            libraryDebounceCts?.Cancel();
+            libraryDebounceCts?.Dispose();
+            logDebounceCts?.Cancel();
+            logDebounceCts?.Dispose();
             if (!busy) core.Dispose();
         };
     }
@@ -87,7 +92,77 @@ public sealed partial class MainWindow : Window
         await Run(LoadQuickPlay);
         StartupProgress.Visibility = Visibility.Collapsed;
         started.TrySetResult();
-        if (!closed) timer.Start();
+    }
+
+    private void OnCoreEvent(JsonElement ev)
+    {
+        if (closed) return;
+        var clone = ev.Clone();
+        DispatcherQueue.TryEnqueue(() => HandleCoreEvent(clone));
+    }
+
+    private void HandleCoreEvent(JsonElement ev)
+    {
+        if (closed || !ev.TryGetProperty("event", out var eventProp)) return;
+        switch (eventProp.GetString())
+        {
+            case "job":
+                if (ev.TryGetProperty("job", out var jobElement) && jobElement.Deserialize<Job>() is { } incoming)
+                {
+                    var list = jobs.ToList();
+                    var index = list.FindIndex(existing => existing.job_id == incoming.job_id);
+                    if (index >= 0) list[index] = incoming;
+                    else list.Insert(0, incoming);
+                    jobs = list.ToArray();
+                    DrawJobs();
+                    if (incoming.status is "succeeded" or "failed" or "canceled" or "interrupted")
+                        ScheduleLibraryRefresh();
+                }
+                break;
+            case "process":
+            case "instance":
+                ScheduleLibraryRefresh();
+                break;
+            case "log":
+                if (ev.TryGetProperty("instance_id", out var idElement) &&
+                    idElement.GetString() == SelectedProfile?.id)
+                    ScheduleLiveLogRefresh();
+                break;
+        }
+    }
+
+    private void ScheduleLibraryRefresh()
+    {
+        libraryDebounceCts?.Cancel();
+        libraryDebounceCts?.Dispose();
+        var cts = libraryDebounceCts = new CancellationTokenSource();
+        _ = DebounceAsync(100, cts.Token, () => Run(Update, waitForCore: true));
+    }
+
+    private void ScheduleLiveLogRefresh()
+    {
+        logDebounceCts?.Cancel();
+        logDebounceCts?.Dispose();
+        var cts = logDebounceCts = new CancellationTokenSource();
+        _ = DebounceAsync(150, cts.Token, async () =>
+        {
+            if (LibraryPage.Visibility == Visibility.Visible &&
+                Equals(Details.SelectedItem, LogTab) &&
+                SelectedProfile is { } profile &&
+                (LogPicker.SelectedItem as ArchivedLog ?? liveLog) == liveLog)
+                await Run(() => LoadLog(profile), waitForCore: true);
+        });
+    }
+
+    private async Task DebounceAsync(int delayMs, CancellationToken token, Func<Task> action)
+    {
+        try
+        {
+            await Task.Delay(delayMs, token);
+            if (!closed && !token.IsCancellationRequested)
+                await action();
+        }
+        catch (OperationCanceledException) { }
     }
 
     internal static bool IsModpackPath(string path) =>
@@ -380,13 +455,20 @@ public sealed partial class MainWindow : Window
     {
         var url = await core.Call<string>(new { method = "begin_login" });
         var tempDataDir = Path.Combine(Path.GetTempPath(), $"GradientOAuth-{Guid.NewGuid():N}");
-        var web = new WebView2 { Width = 650, Height = 440 };
+        var rootSize = Layout.XamlRoot.Size;
+        var web = new WebView2
+        {
+            Width = Math.Clamp(rootSize.Width - 120, 420, 680),
+            Height = Math.Clamp(rootSize.Height - 220, 420, 560),
+        };
         var dialog = new ContentDialog
         {
             RequestedTheme = Layout.ActualTheme,
             XamlRoot = Layout.XamlRoot, Title = Tr("Увійти в Microsoft"), Content = web,
             CloseButtonText = Tr("Скасувати")
         };
+        dialog.Resources["ContentDialogMaxWidth"] = 760d;
+        dialog.Resources["ContentDialogMaxHeight"] = 720d;
         string? code = null;
         string? oauthError = null;
         web.NavigationStarting += (_, args) =>
@@ -408,12 +490,23 @@ public sealed partial class MainWindow : Window
             }
             dialog.Hide();
         };
+        dialog.Opened += async (_, _) =>
+        {
+            try
+            {
+                var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateWithOptionsAsync(
+                    null, tempDataDir, null);
+                await web.EnsureCoreWebView2Async(env);
+                web.Source = new Uri(url);
+            }
+            catch (Exception error)
+            {
+                oauthError = error.Message;
+                dialog.Hide();
+            }
+        };
         try
         {
-            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateWithOptionsAsync(
-                null, tempDataDir, null);
-            await web.EnsureCoreWebView2Async(env);
-            web.Source = new Uri(url);
             await dialog.ShowAsync();
         }
         finally

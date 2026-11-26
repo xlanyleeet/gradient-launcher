@@ -209,6 +209,7 @@ private struct LauncherView: View {
     @State private var logWasRunning = false
     @State private var status = ""
     @State private var busy = false
+    @State private var pendingRefresh = false
     @State private var actionRevision = 0
     @State private var tab = ProfileTab.content
     @State private var loadedTab: String?
@@ -258,9 +259,10 @@ private struct LauncherView: View {
             Task { await loadNativePreferences() }
         }
         .task {
-            while !Task.isCancelled {
-                await poll()
-                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            await poll()
+            for await event in core.events {
+                if Task.isCancelled { return }
+                await handleCoreEvent(event)
             }
         }
         .task {
@@ -282,6 +284,8 @@ private struct LauncherView: View {
             }
         }
         .onChange(of: selectedID) {
+            contentSearch = ""
+            contentFilter = "all"
             Task { await perform(loadSelection) }
         }
         .onChange(of: sidebarLimit) { showAllProfiles = false }
@@ -1291,8 +1295,36 @@ private struct LauncherView: View {
             .disabled(busy)
     }
 
+    @MainActor private func handleCoreEvent(_ event: CoreEvent) async {
+        switch event {
+        case let .job(data):
+            guard let incoming = try? JSONDecoder().decode(Job.self, from: data) else { return }
+            if let index = jobs.firstIndex(where: { $0.job_id == incoming.job_id }) {
+                jobs[index] = incoming
+            } else {
+                jobs.insert(incoming, at: 0)
+            }
+            if ["succeeded", "failed", "canceled", "interrupted"].contains(incoming.status) {
+                await poll()
+            }
+        case .process, .instance:
+            await poll()
+        case let .log(instanceID):
+            if !showDiscover && !showLibraryHome && tab == .log &&
+               selectedID == instanceID && selectedLog == nil,
+               let profile {
+                await perform { try await loadLog(profile) }
+            }
+        }
+    }
+
     @MainActor private func poll() async {
-        guard !(await core.isSuspendedForUpdate), !busy else { return }
+        guard !(await core.isSuspendedForUpdate) else { return }
+        if busy {
+            pendingRefresh = true
+            return
+        }
+        pendingRefresh = false
         let revision = actionRevision
         defer { startingLibrary = false }
         do { try await refresh(pollRevision: revision) }
@@ -1409,7 +1441,13 @@ private struct LauncherView: View {
         guard !busy else { return }
         actionRevision += 1
         busy = true
-        defer { busy = false }
+        defer {
+            busy = false
+            if pendingRefresh {
+                pendingRefresh = false
+                Task { await poll() }
+            }
+        }
         do { try await action() } catch { status = error.localizedDescription }
     }
 

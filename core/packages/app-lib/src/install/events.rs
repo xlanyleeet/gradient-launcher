@@ -197,14 +197,11 @@ impl InstallProgressReporterState {
     }
 }
 
-#[allow(unused_variables)]
 pub async fn emit_install_job(
     snapshot: &InstallJobSnapshot,
 ) -> crate::Result<()> {
-    #[cfg(feature = "tauri")]
-    {
+    if let Some(event_state) = crate::EventState::try_get() {
         let result: crate::Result<()> = (|| {
-            let event_state = crate::EventState::get();
             event_state.send(crate::event::AppEvent::InstallJob(
                 std::sync::Arc::new(snapshot.clone()),
             ))?;

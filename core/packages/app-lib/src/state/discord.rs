@@ -76,7 +76,11 @@ impl DiscordGuard {
         let activity = Activity::new()
             .details("Gradient Launcher")
             .state(msg)
-            .assets(Assets::new().large_text("Gradient Launcher"));
+            .assets(
+                Assets::new()
+                    .large_image("launcher")
+                    .large_text("Gradient Launcher"),
+            );
 
         // Attempt to set the activity
         // If the existing connection fails, attempt to reconnect and try again

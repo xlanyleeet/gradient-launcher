@@ -1,12 +1,10 @@
 use super::{FriendPayload, LoadingBarId};
 #[cfg(feature = "tauri")]
+use crate::event::{LoadingPayload, WarningPayload};
 use crate::event::{
-    AppEvent, InstanceGroupsChangedPayload, InstancePayload, LoadingPayload,
-    ProcessPayload, WarningPayload,
-};
-use crate::event::{
-    CommandPayload, EventError, InstancePayloadType, LoadingBar,
-    LoadingBarType, ProcessPayloadType,
+    AppEvent, CommandPayload, EventError, InstanceGroupsChangedPayload,
+    InstancePayload, InstancePayloadType, LoadingBar, LoadingBarType,
+    ProcessPayload, ProcessPayloadType,
 };
 use crate::state::OnboardingChecklist;
 use futures::prelude::*;
@@ -184,16 +182,13 @@ pub async fn emit_command(command: CommandPayload) -> crate::Result<()> {
 }
 
 // emit_process(uuid, pid, event, message)
-#[allow(unused_variables)]
 pub async fn emit_process(
     instance_id: &str,
     uuid: Uuid,
     event: ProcessPayloadType,
     message: &str,
 ) -> crate::Result<()> {
-    #[cfg(feature = "tauri")]
-    {
-        let event_state = crate::EventState::get();
+    if let Some(event_state) = crate::EventState::try_get() {
         event_state.send(AppEvent::Process(ProcessPayload {
             instance_id: instance_id.to_string(),
             uuid: uuid.to_string(),
@@ -205,14 +200,11 @@ pub async fn emit_process(
 }
 
 // emit_instance(path, event)
-#[allow(unused_variables)]
 pub async fn emit_instance(
     instance_id: &str,
     event: InstancePayloadType,
 ) -> crate::Result<()> {
-    #[cfg(feature = "tauri")]
-    {
-        let event_state = crate::EventState::get();
+    if let Some(event_state) = crate::EventState::try_get() {
         event_state.send(AppEvent::Instance(InstancePayload {
             instance_id: instance_id.to_string(),
             event,
@@ -221,13 +213,10 @@ pub async fn emit_instance(
     Ok(())
 }
 
-#[allow(unused_variables)]
 pub async fn emit_instance_groups_changed(
     instance_ids: &[String],
 ) -> crate::Result<()> {
-    #[cfg(feature = "tauri")]
-    {
-        let event_state = crate::EventState::get();
+    if let Some(event_state) = crate::EventState::try_get() {
         event_state.send(AppEvent::InstanceGroupsChanged(
             InstanceGroupsChangedPayload {
                 instance_ids: instance_ids.to_vec(),

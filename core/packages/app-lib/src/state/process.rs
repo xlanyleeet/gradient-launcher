@@ -721,36 +721,24 @@ impl Process {
             }
         }
 
-        #[cfg(feature = "tauri")]
-        {
-            let event_state = crate::EventState::get();
+        if let Some(event_state) = crate::EventState::try_get() {
             let _ = event_state.send(crate::event::AppEvent::Log(LogPayload {
                 instance_id: instance_id.to_string(),
                 event: LogEvent::Log4j(event.clone()),
             }));
-        }
-        #[cfg(not(feature = "tauri"))]
-        {
-            let _ = (instance_id, event);
         }
     }
 
     fn emit_legacy_log(instance_id: &str, message: &str) {
         push_log_line(instance_id, message.to_string());
 
-        #[cfg(feature = "tauri")]
-        {
-            let event_state = crate::EventState::get();
+        if let Some(event_state) = crate::EventState::try_get() {
             let _ = event_state.send(crate::event::AppEvent::Log(LogPayload {
                 instance_id: instance_id.to_string(),
                 event: LogEvent::Legacy {
                     message: message.to_string(),
                 },
             }));
-        }
-        #[cfg(not(feature = "tauri"))]
-        {
-            let _ = (instance_id, message);
         }
     }
 

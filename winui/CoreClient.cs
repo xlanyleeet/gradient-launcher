@@ -9,7 +9,11 @@ namespace Gradient;
 internal sealed class CoreClient : IDisposable
 {
     private readonly SemaphoreSlim callLock = new(1, 1);
+    private readonly object replyGate = new();
     private Process? process;
+    private TaskCompletionSource<JsonElement>? pendingReply;
+
+    public event Action<JsonElement>? EventReceived;
 
     public async Task<T> Call<T>(object request)
     {
@@ -44,11 +48,14 @@ internal sealed class CoreClient : IDisposable
                 info.Environment["THESEUS_DB_BACKUP_DIR"] = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "Gradient", "Backups", "app-db");
-            process = Process.Start(info) ?? throw new IOException(Tr("Не вдалося запустити ядро."));
+            var child = Process.Start(info) ?? throw new IOException(Tr("Не вдалося запустити ядро."));
+            process = child;
             try
             {
-                var hello = await Read();
-                if (hello.GetProperty("protocol").GetInt32() != 1)
+                var line = await child.StandardOutput.ReadLineAsync()
+                    ?? throw new IOException(Tr("Ядро завершило роботу. Перевірте каталог даних."));
+                using var doc = JsonDocument.Parse(line);
+                if (doc.RootElement.GetProperty("protocol").GetInt32() != 1)
                     throw new IOException(Tr("Несумісна версія ядра."));
             }
             catch
@@ -56,21 +63,77 @@ internal sealed class CoreClient : IDisposable
                 ResetProcess();
                 throw;
             }
+            _ = Task.Run(() => ReadLoopAsync(child));
         }
 
-        await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request));
-        var reply = await Read();
+        var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (replyGate)
+            pendingReply = tcs;
+
+        try
+        {
+            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request));
+        }
+        catch
+        {
+            lock (replyGate)
+                if (pendingReply == tcs) pendingReply = null;
+            ResetProcess();
+            throw;
+        }
+
+        var reply = await tcs.Task;
         if (reply.TryGetProperty("error", out var error))
             throw new InvalidOperationException(error.GetString());
         return reply.GetProperty("ok").Deserialize<T>()!;
     }
 
-    private async Task<JsonElement> Read()
+    private async Task ReadLoopAsync(Process child)
     {
-        var line = await process!.StandardOutput.ReadLineAsync()
-            ?? throw new IOException(Tr("Ядро завершило роботу. Перевірте каталог даних."));
-        using var document = JsonDocument.Parse(line);
-        return document.RootElement.Clone();
+        try
+        {
+            while (true)
+            {
+                var line = await child.StandardOutput.ReadLineAsync();
+                if (line is null) break;
+                JsonElement element;
+                using (var document = JsonDocument.Parse(line))
+                    element = document.RootElement.Clone();
+
+                if (element.TryGetProperty("event", out _))
+                {
+                    try { EventReceived?.Invoke(element); }
+                    catch { }
+                }
+                else
+                {
+                    TaskCompletionSource<JsonElement>? target;
+                    lock (replyGate)
+                    {
+                        target = pendingReply;
+                        pendingReply = null;
+                    }
+                    target?.TrySetResult(element);
+                }
+            }
+        }
+        catch (Exception error)
+        {
+            FailPendingReply(error);
+            return;
+        }
+        FailPendingReply(new IOException(Tr("Ядро завершило роботу. Перевірте каталог даних.")));
+    }
+
+    private void FailPendingReply(Exception error)
+    {
+        TaskCompletionSource<JsonElement>? target;
+        lock (replyGate)
+        {
+            target = pendingReply;
+            pendingReply = null;
+        }
+        target?.TrySetException(error);
     }
 
     public async Task StopForUpdateAsync()
@@ -93,6 +156,7 @@ internal sealed class CoreClient : IDisposable
 
     private void ResetProcess()
     {
+        FailPendingReply(new IOException(Tr("Ядро завершило роботу. Перевірте каталог даних.")));
         process?.StandardInput.Dispose();
         process?.Dispose();
         process = null;

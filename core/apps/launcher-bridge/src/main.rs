@@ -1,12 +1,14 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{self, BufRead, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 use theseus::{
-    EventState, State, install, instance, logs, minecraft_auth, process, worlds,
+    AppEvent, EventState, State, install, instance, logs, minecraft_auth,
+    process, worlds,
 };
 
 mod discover;
@@ -944,20 +946,11 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
             json!(worlds::backup_world(&directory, world.world_id()).await?)
         }
         Request::Queue => {
-            let jobs: Vec<_> = install::list_jobs(true).await?.into_iter().map(|job| {
-                json!({
-                    "job_id": job.job_id,
-                    "instance_id": job.instance_id,
-                    "status": job.status,
-                    "phase": job.phase,
-                    "paused": job.paused,
-                    "can_pause": job.can_pause,
-                    "can_cancel": job.can_cancel,
-                    "progress": job.progress.filter(|progress| progress.total > 0)
-                        .map(|progress| (progress.current as f64 / progress.total as f64).min(1.0)),
-                    "error": job.error.map(|error| error.message),
-                })
-            }).collect();
+            let jobs: Vec<_> = install::list_jobs(true)
+                .await?
+                .iter()
+                .map(job_json)
+                .collect();
             json!(jobs)
         }
         Request::Import { path } => json!(
@@ -1005,6 +998,21 @@ async fn handle(request: Request, login: &mut PendingLogin) -> Result<Value> {
     })
 }
 
+fn job_json(job: &install::InstallJobSnapshot) -> Value {
+    json!({
+        "job_id": job.job_id,
+        "instance_id": job.instance_id,
+        "status": job.status,
+        "phase": job.phase,
+        "paused": job.paused,
+        "can_pause": job.can_pause,
+        "can_cancel": job.can_cancel,
+        "progress": job.progress.as_ref().filter(|progress| progress.total > 0)
+            .map(|progress| (progress.current as f64 / progress.total as f64).min(1.0)),
+        "error": job.error.as_ref().map(|error| error.message.clone()),
+    })
+}
+
 fn reply(stdout: &mut impl Write, value: Value) -> io::Result<()> {
     writeln!(stdout, "{value}")?;
     stdout.flush()
@@ -1027,12 +1035,109 @@ async fn main() -> Result<()> {
         format!("Could not lock Gradient data directory: {error}")
     })?;
 
-    EventState::init().await?;
+    let event_state = EventState::init().await?;
     State::init(identifier.to_owned()).await?;
 
+    let (out_tx, mut out_rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+    if out_tx.send(json!({ "protocol": 1 })).is_err() {
+        return Ok(());
+    }
+
+    let writer = std::thread::spawn(move || -> io::Result<()> {
+        let mut stdout = io::stdout().lock();
+        while let Some(value) = out_rx.blocking_recv() {
+            match reply(&mut stdout, value) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::BrokenPipe => break,
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    });
+
+    let event_tx = out_tx.clone();
+    let mut events = event_state.subscribe();
+    let forwarder = tokio::spawn(async move {
+        let mut log_throttles: HashMap<String, Instant> = HashMap::new();
+        let mut pending_logs: HashSet<String> = HashSet::new();
+        let mut flush_tick = tokio::time::interval(Duration::from_millis(150));
+        flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                res = events.recv() => {
+                    let payload = match res {
+                        Ok(AppEvent::InstallJob(snapshot)) => {
+                            Some(json!({ "event": "job", "job": job_json(&snapshot) }))
+                        }
+                        Ok(AppEvent::Process(process)) => Some(json!({
+                            "event": "process",
+                            "instance_id": process.instance_id,
+                            "kind": process.event,
+                        })),
+                        Ok(AppEvent::Instance(instance)) => Some(json!({
+                            "event": "instance",
+                            "instance_id": instance.instance_id,
+                        })),
+                        Ok(AppEvent::InstanceGroupsChanged(_)) => {
+                            Some(json!({ "event": "instance", "instance_id": "" }))
+                        }
+                        Ok(AppEvent::Log(log)) => {
+                            let now = Instant::now();
+                            let allow = log_throttles
+                                .get(&log.instance_id)
+                                .is_none_or(|last| now.duration_since(*last) >= Duration::from_millis(150));
+                            if allow {
+                                log_throttles.insert(log.instance_id.clone(), now);
+                                pending_logs.remove(&log.instance_id);
+                                Some(json!({
+                                    "event": "log",
+                                    "instance_id": log.instance_id,
+                                }))
+                            } else {
+                                pending_logs.insert(log.instance_id);
+                                None
+                            }
+                        }
+                        Ok(_) => None,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                            Some(json!({ "event": "instance", "instance_id": "" }))
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    };
+                    if let Some(value) = payload
+                        && event_tx.send(value).is_err()
+                    {
+                        break;
+                    }
+                }
+                _ = flush_tick.tick(), if !pending_logs.is_empty() => {
+                    let now = Instant::now();
+                    for instance_id in pending_logs.drain() {
+                        log_throttles.insert(instance_id.clone(), now);
+                        if event_tx.send(json!({
+                            "event": "log",
+                            "instance_id": instance_id,
+                        })).is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    let (in_tx, mut in_rx) =
+        tokio::sync::mpsc::unbounded_channel::<io::Result<String>>();
+    std::thread::spawn(move || {
+        for line in io::stdin().lock().lines() {
+            if in_tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
     let mut login = None;
-    reply(&mut io::stdout().lock(), json!({ "protocol": 1 }))?;
-    for line in io::stdin().lock().lines() {
+    while let Some(line) = in_rx.recv().await {
         let response = match serde_json::from_str::<Request>(&line?) {
             Ok(request) => match handle(request, &mut login).await {
                 Ok(value) => json!({ "ok": value }),
@@ -1040,12 +1145,14 @@ async fn main() -> Result<()> {
             },
             Err(error) => json!({ "error": error.to_string() }),
         };
-        match reply(&mut io::stdout().lock(), response) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::BrokenPipe => break,
-            Err(error) => return Err(error.into()),
+        if out_tx.send(response).is_err() {
+            break;
         }
     }
+
+    forwarder.abort();
+    drop(out_tx);
+    let _ = writer.join();
     // Keep game output and active installations alive after the UI closes.
     loop {
         let installs_running =
